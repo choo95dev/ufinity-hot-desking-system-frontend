@@ -2,7 +2,7 @@
 
 import { useState, FormEvent } from "react";
 
-export default function AdminLoginPage() {
+export default function LoginPage() {
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
@@ -38,7 +38,7 @@ export default function AdminLoginPage() {
 
 		try {
 			// TODO: Replace with actual backend API call
-			// const response = await fetch('/api/admin/login', {
+			// const response = await fetch('/api/login', {
 			//   method: 'POST',
 			//   headers: { 'Content-Type': 'application/json' },
 			//   body: JSON.stringify({ email, password }),
@@ -64,24 +64,14 @@ export default function AdminLoginPage() {
 		<div className="min-h-screen flex items-center justify-center bg-gray-50">
 			<div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
 				<div>
-					<h2
-						className="mt-6 text-center text-3xl font-extrabold text-gray-900"
-						data-testid="login-title"
-					>
-						Admin Login
+					<h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900" data-testid="login-title">
+						Sign In
 					</h2>
 				</div>
-				<form
-					className="mt-8 space-y-6"
-					onSubmit={handleSubmit}
-					data-testid="login-form"
-				>
+				<form className="mt-8 space-y-6" onSubmit={handleSubmit} data-testid="login-form">
 					<div className="space-y-4">
 						<div>
-							<label
-								htmlFor="email"
-								className="block text-sm font-medium text-gray-700"
-							>
+							<label htmlFor="email" className="block text-sm font-medium text-gray-700">
 								Email address
 							</label>
 							<input
@@ -96,23 +86,17 @@ export default function AdminLoginPage() {
 								className={`mt-1 block w-full px-3 py-2 border ${
 									errors.email ? "border-red-500" : "border-gray-300"
 								} rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`}
-								placeholder="admin@example.com"
+								placeholder="you@example.com"
 							/>
 							{errors.email && (
-								<p
-									className="mt-1 text-sm text-red-600"
-									data-testid="email-error"
-								>
+								<p className="mt-1 text-sm text-red-600" data-testid="email-error">
 									{errors.email}
 								</p>
 							)}
 						</div>
 
 						<div>
-							<label
-								htmlFor="password"
-								className="block text-sm font-medium text-gray-700"
-							>
+							<label htmlFor="password" className="block text-sm font-medium text-gray-700">
 								Password
 							</label>
 							<input
@@ -130,10 +114,7 @@ export default function AdminLoginPage() {
 								placeholder="Enter your password"
 							/>
 							{errors.password && (
-								<p
-									className="mt-1 text-sm text-red-600"
-									data-testid="password-error"
-								>
+								<p className="mt-1 text-sm text-red-600" data-testid="password-error">
 									{errors.password}
 								</p>
 							)}
