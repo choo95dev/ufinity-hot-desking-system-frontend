@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
+	const router = useRouter();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
@@ -53,6 +55,9 @@ export default function AdminLoginPage() {
 			// Mock API call
 			await new Promise((resolve) => setTimeout(resolve, 1000));
 			console.log("Login attempt:", { email, password: "***" });
+			
+			// Navigate to view-booking page on successful login
+			router.push('/admin/view-booking');
 		} catch (error) {
 			console.error("Login error:", error);
 		} finally {
