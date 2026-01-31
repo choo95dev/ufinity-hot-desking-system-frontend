@@ -5,10 +5,77 @@
 import type { Booking } from '../models/Booking';
 import type { PaginatedResponse } from '../models/PaginatedResponse';
 import type { Resource } from '../models/Resource';
+import type { SuccessResponse } from '../models/SuccessResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
 export class ResourcesService {
+    /**
+     * Update resource position on floor plan
+     * Link a resource to a floor plan and set its position coordinates (Admin only)
+     * @param id Resource ID
+     * @param requestBody
+     * @returns any Resource position updated successfully
+     * @throws ApiError
+     */
+    public static patchApiResourcesPosition(
+        id: number,
+        requestBody: {
+            /**
+             * Floor plan ID to link resource to, or null to unlink
+             */
+            floor_plan_id: number | null;
+            /**
+             * X coordinate on floor plan (pixels from left)
+             */
+            position_x?: number | null;
+            /**
+             * Y coordinate on floor plan (pixels from top)
+             */
+            position_y?: number | null;
+        },
+    ): CancelablePromise<(SuccessResponse & {
+        data?: Resource;
+    })> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/resources/{id}/position',
+            path: {
+                'id': id,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                400: `Invalid request parameters`,
+                401: `Authentication required or token invalid`,
+                403: `Insufficient permissions`,
+                404: `Resource not found`,
+            },
+        });
+    }
+    /**
+     * Get resources by floor plan
+     * Retrieve all resources linked to a specific floor plan
+     * @param id Floor plan ID
+     * @returns any Successful response
+     * @throws ApiError
+     */
+    public static getApiResourcesByFloorPlan(
+        id: number,
+    ): CancelablePromise<(SuccessResponse & {
+        data?: Array<Resource>;
+    })> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/resources/by-floor-plan/{id}',
+            path: {
+                'id': id,
+            },
+            errors: {
+                401: `Authentication required or token invalid`,
+            },
+        });
+    }
     /**
      * List all resources
      * Get paginated list of all resources with optional filtering
