@@ -1,11 +1,15 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { AuthenticationService, OpenAPI, ApiError } from "@/src/api";
+import { setAuthData } from "@/utils/auth";
 
 export default function LoginPage() {
+	const router = useRouter();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
-	const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+	const [errors, setErrors] = useState<{ email?: string; password?: string; general?: string }>({});
 	const [isLoading, setIsLoading] = useState(false);
 
 	const validateEmail = (email: string): boolean => {
@@ -37,24 +41,46 @@ export default function LoginPage() {
 		setIsLoading(true);
 
 		try {
-			// TODO: Replace with actual backend API call
-			// const response = await fetch('/api/login', {
-			//   method: 'POST',
-			//   headers: { 'Content-Type': 'application/json' },
-			//   body: JSON.stringify({ email, password }),
-			// });
-			// const data = await response.json();
-			// if (response.ok) {
-			//   // Handle successful login (e.g., store token, redirect)
-			// } else {
-			//   // Handle error
-			// }
+			// Configure API base URL
+			OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
-			// Mock API call
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-			console.log("Login attempt:", { email, password: "***" });
+			// Call user login API
+			const response = await AuthenticationService.postApiAuthUserLogin({
+				email,
+				password,
+			});
+
+			// Store token in localStorage and cookies
+			if (response.data?.token) {
+				setAuthData(response.data.token, 'user', response.data.user);
+
+				// Set token for future API calls
+				OpenAPI.TOKEN = response.data.token;
+
+				console.log("User login successful:", response.data.user);
+				
+				// Navigate to dashboard or redirect URL
+				const urlParams = new URLSearchParams(window.location.search);
+				const redirect = urlParams.get('redirect') || '/public/dashboard';
+				router.push(redirect);
+			} else {
+				setErrors({ general: "Invalid response from server" });
+			}
 		} catch (error) {
 			console.error("Login error:", error);
+			
+			if (error instanceof ApiError) {
+				// Handle API errors
+				if (error.status === 401) {
+					setErrors({ general: "Invalid email or password" });
+				} else if (error.body?.data?.errorMessage) {
+					setErrors({ general: error.body.data.errorMessage });
+				} else {
+					setErrors({ general: "An error occurred. Please try again." });
+				}
+			} else {
+				setErrors({ general: "Network error. Please check your connection." });
+			}
 		} finally {
 			setIsLoading(false);
 		}

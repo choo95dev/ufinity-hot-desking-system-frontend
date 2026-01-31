@@ -3,6 +3,7 @@
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AuthenticationService, OpenAPI, ApiError } from "@/src/api";
+import { setAuthData } from "@/utils/auth";
 
 export default function AdminLoginPage() {
 	const router = useRouter();
@@ -49,11 +50,9 @@ export default function AdminLoginPage() {
 				password,
 			});
 
-			// Store token in localStorage
+			// Store token in localStorage and cookies
 			if (response.data?.token) {
-				localStorage.setItem('authToken', response.data.token);
-				localStorage.setItem('userRole', 'admin');
-				localStorage.setItem('adminData', JSON.stringify(response.data.admin));
+				setAuthData(response.data.token, 'admin', response.data.admin);
 
 				// Set token for future API calls
 				OpenAPI.TOKEN = response.data.token;

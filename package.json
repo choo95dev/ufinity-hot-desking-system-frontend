@@ -13,10 +13,16 @@
   },
   "dependencies": {
     "@archilogic/floor-plan-sdk": "^5.1.17",
+    "@heroui/react": "^2.8.8",
+    "@hookform/resolvers": "^5.2.2",
+    "framer-motion": "^12.29.2",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-datepicker": "^9.1.0",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "react-hook-form": "^7.71.1",
+    "sonner": "^2.0.7",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
