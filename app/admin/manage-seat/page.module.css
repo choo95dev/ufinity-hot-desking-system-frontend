@@ -276,6 +276,7 @@
   transition: all 0.2s ease;
   box-sizing: border-box;
   background: white;
+  color: black;
 }
 
 .formGroup input[type="text"]:focus,
@@ -328,6 +329,7 @@
   min-width: 120px;
   padding: 8px;
   font-size: 13px;
+  color: black;
 }
 
 .dateRangeItem:last-child {
@@ -388,6 +390,7 @@
   border: 1px solid #e0e0e0;
   border-radius: 4px;
   font-family: inherit;
+  color: black;
 }
 
 .timeRangeContainer input[type="time"]:focus {
