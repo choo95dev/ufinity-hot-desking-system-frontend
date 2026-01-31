@@ -23,6 +23,7 @@ interface Seat {
   timeRange: TimeRange;
   description: string;
   blocked: boolean;
+  type: 'SOLO' | 'TEAM';
 }
 
 interface SeatEditForm {
@@ -32,6 +33,7 @@ interface SeatEditForm {
   timeRange: TimeRange;
   description: string;
   blocked: boolean;
+  type: 'SOLO' | 'TEAM';
 }
 
 export default function AdminManageSeatPage() {
@@ -58,10 +60,11 @@ export default function AdminManageSeatPage() {
 
         if (savedSeats) {
           const parsedSeats = JSON.parse(savedSeats);
-          // Ensure all seats have dateRanges property
+          // Ensure all seats have dateRanges and type property
           const normalizedSeats = parsedSeats.map((seat: any) => ({
             ...seat,
             dateRanges: seat.dateRanges || [],
+            type: seat.type || 'SOLO',
           }));
           setSeats(normalizedSeats);
         }
@@ -114,6 +117,7 @@ export default function AdminManageSeatPage() {
         timeRange: clickedSeat.timeRange,
         description: clickedSeat.description,
         blocked: clickedSeat.blocked,
+        type: clickedSeat.type || 'SOLO',
       });
       setShowForm(true);
     } else {
@@ -127,6 +131,7 @@ export default function AdminManageSeatPage() {
         timeRange: { start: '09:00', end: '17:00' },
         description: '',
         blocked: false,
+        type: 'SOLO',
       };
       setSeats([...seats, newSeat]);
       setSelectedSeat(newSeat);
@@ -137,6 +142,7 @@ export default function AdminManageSeatPage() {
         timeRange: newSeat.timeRange,
         description: newSeat.description,
         blocked: newSeat.blocked,
+        type: newSeat.type,
       });
       setShowForm(true);
     }
@@ -156,6 +162,7 @@ export default function AdminManageSeatPage() {
             timeRange: editForm.timeRange,
             description: editForm.description,
             blocked: editForm.blocked,
+            type: editForm.type,
           }
         : seat
     ));
@@ -367,6 +374,32 @@ export default function AdminManageSeatPage() {
                     onChange={(e) => handleFormChange('number', e.target.value)}
                     placeholder="e.g., A1, B2"
                   />
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label>Type:</label>
+                  <div className={styles.radioGroup}>
+                    <label className={styles.radioLabel}>
+                      <input
+                        type="radio"
+                        name="type"
+                        value="SOLO"
+                        checked={editForm.type === 'SOLO'}
+                        onChange={(e) => handleFormChange('type', e.target.value as 'SOLO' | 'TEAM')}
+                      />
+                      <span>Solo</span>
+                    </label>
+                    <label className={styles.radioLabel}>
+                      <input
+                        type="radio"
+                        name="type"
+                        value="TEAM"
+                        checked={editForm.type === 'TEAM'}
+                        onChange={(e) => handleFormChange('type', e.target.value as 'SOLO' | 'TEAM')}
+                      />
+                      <span>Team</span>
+                    </label>
+                  </div>
                 </div>
 
                 <div className={styles.formGroup}>

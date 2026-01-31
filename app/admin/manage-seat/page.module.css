@@ -535,3 +535,38 @@
   }
 }
 
+.radioGroup {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.radioLabel {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 14px;
+  color: #212121;
+  user-select: none;
+  line-height: 1;
+}
+
+.radioLabel input[type="radio"] {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  flex-shrink: 0;
+  margin: 0 8px 0 0;
+  accent-color: #1976d2;
+  vertical-align: middle;
+}
+
+.radioLabel span {
+  line-height: 1.4;
+}
+
+.radioLabel:hover {
+  color: #1976d2;
+}
+
