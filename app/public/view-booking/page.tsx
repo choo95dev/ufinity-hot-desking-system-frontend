@@ -1,0 +1,385 @@
+"use client";
+
+import { SetStateAction, useEffect, useState } from "react";
+import Link from "next/link";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+
+interface Booking {
+	id: string;
+	bookedSeat: string;
+	bookingDate: string;
+	bookingStartTime: string;
+	bookingEndTime: string;
+	createdAt: string;
+}
+
+const PAGE_TITLE = "View Bookings";
+const EMPTY_MESSAGE = "No bookings available.";
+const SEARCH_PLACEHOLDER = "Search by seat, date, or time";
+
+const extractDate = (bookedAt: string): string => bookedAt.split(" ")[0];
+
+const formatDateYmd = (date: Date): string => {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+};
+
+const isWeekday = (date: Date): boolean => {
+	const day = date.getDay();
+	return day !== 0 && day !== 6;
+};
+
+/**
+ * Fetch booking records for the public view.
+ * @returns Promise resolving to booking records.
+ */
+const fetchPublicBookings = async (): Promise<Booking[]> => {
+	return [
+		{
+			id: "BK-1001",
+			bookedSeat: "A-01",
+			bookingDate: "2026-01-30",
+			bookingStartTime: "09:00 AM",
+			bookingEndTime: "06:00 PM",
+			createdAt: "2026-01-29 04:20 PM",
+		},
+		{
+			id: "BK-1002",
+			bookedSeat: "B-03",
+			bookingDate: "2026-01-31",
+			bookingStartTime: "10:00 AM",
+			bookingEndTime: "05:00 PM",
+			createdAt: "2026-01-30 01:15 PM",
+		},
+		{
+			id: "BK-1003",
+			bookedSeat: "C-02",
+			bookingDate: "2026-02-01",
+			bookingStartTime: "08:30 AM",
+			bookingEndTime: "04:30 PM",
+			createdAt: "2026-01-31 06:05 PM",
+		},
+		{
+			id: "BK-1004",
+			bookedSeat: "A-05",
+			bookingDate: "2026-02-01",
+			bookingStartTime: "09:30 AM",
+			bookingEndTime: "05:30 PM",
+			createdAt: "2026-01-31 09:10 AM",
+		},
+		{
+			id: "BK-1005",
+			bookedSeat: "B-01",
+			bookingDate: "2026-02-02",
+			bookingStartTime: "08:30 AM",
+			bookingEndTime: "04:30 PM",
+			createdAt: "2026-02-01 11:45 AM",
+		},
+	];
+};
+
+export default function PublicViewBookingPage() {
+	const [bookings, setBookings] = useState<Booking[]>([]);
+	const [filteredBookings, setFilteredBookings] = useState<Booking[]>([]);
+	const [isLoading, setIsLoading] = useState(true);
+	const [errorMessage, setErrorMessage] = useState<string | null>(null);
+	const [searchTerm, setSearchTerm] = useState("");
+	const [startDate, setStartDate] = useState<Date | null>(null);
+	const [endDate, setEndDate] = useState<Date | null>(null);
+	const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+	const [cancelBooking, setCancelBooking] = useState<Booking | null>(null);
+
+	useEffect(() => {
+		const loadBookings = async () => {
+			try {
+				setIsLoading(true);
+				const data = await fetchPublicBookings();
+				setBookings(data);
+				setFilteredBookings(data);
+				setErrorMessage(null);
+			} catch (error) {
+				console.error(error);
+				setErrorMessage("Failed to load bookings.");
+			} finally {
+				setIsLoading(false);
+			}
+		};
+
+		loadBookings();
+	}, []);
+
+	useEffect(() => {
+		const normalizedSearch = searchTerm.trim().toLowerCase();
+		let nextBookings = [...bookings];
+
+		if (normalizedSearch) {
+			nextBookings = nextBookings.filter((booking) => {
+				const searchTarget = `${booking.bookedSeat} ${booking.bookingDate} ${booking.bookingStartTime} ${booking.bookingEndTime} ${booking.createdAt}`.toLowerCase();
+				return searchTarget.includes(normalizedSearch);
+			});
+		}
+
+		if (startDate) {
+			const startValue = formatDateYmd(startDate);
+			nextBookings = nextBookings.filter((booking) => booking.bookingDate >= startValue);
+		}
+
+		if (endDate) {
+			const endValue = formatDateYmd(endDate);
+			nextBookings = nextBookings.filter((booking) => booking.bookingDate <= endValue);
+		}
+
+		nextBookings.sort((left, right) => {
+			const leftValue = new Date(`${left.bookingDate} ${left.bookingStartTime}`).getTime();
+			const rightValue = new Date(`${right.bookingDate} ${right.bookingStartTime}`).getTime();
+			if (sortOrder === "newest") {
+				return rightValue - leftValue;
+			}
+			return leftValue - rightValue;
+		});
+
+		setFilteredBookings(nextBookings);
+	}, [bookings, searchTerm, startDate, endDate, sortOrder]);
+
+	const handleClearFilters = () => {
+		setSearchTerm("");
+		setStartDate(null);
+		setEndDate(null);
+		setSortOrder("newest");
+	};
+
+	const handleCancelBooking = (bookingId: string) => {
+		setBookings((current) => current.filter((booking) => booking.id !== bookingId));
+	};
+
+	const handleStartCancel = (booking: Booking) => {
+		setCancelBooking(booking);
+	};
+
+	const handleCloseCancel = () => {
+		setCancelBooking(null);
+	};
+
+	const handleConfirmCancel = () => {
+		if (!cancelBooking) return;
+		handleCancelBooking(cancelBooking.id);
+		handleCloseCancel();
+	};
+
+	if (isLoading) {
+		return (
+			<div className="min-h-screen bg-gray-100 flex items-center justify-center">
+				<p className="text-gray-600" data-testid="view-booking-loading">
+					Loading bookings...
+				</p>
+			</div>
+		);
+	}
+
+	return (
+		<div className="min-h-screen bg-gray-100">
+			<nav className="bg-white shadow">
+				<div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+					<div className="flex items-center justify-between h-16">
+						<h1 className="text-2xl font-bold text-gray-900" data-testid="view-booking-title" id="view-booking-title">
+							{PAGE_TITLE}
+						</h1>
+						<Link
+							href="/public/booking"
+							className="px-4 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+							data-testid="view-booking-new-link"
+							id="view-booking-new-link"
+						>
+							Book a Seat
+						</Link>
+					</div>
+				</div>
+			</nav>
+
+			<main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+				{errorMessage && (
+					<div className="rounded-md border border-red-200 bg-red-50 p-4 mb-6" data-testid="view-booking-error" id="view-booking-error">
+						<p className="text-sm text-red-700">{errorMessage}</p>
+					</div>
+				)}
+
+				<section className="bg-white shadow rounded-lg p-6 mb-6" data-testid="view-booking-filters" id="view-booking-filters">
+					<h2 className="text-lg font-semibold text-gray-900 mb-4">Filter Bookings</h2>
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+						<div className="lg:col-span-2">
+							<label htmlFor="view-booking-search" className="block text-sm font-medium text-gray-700 mb-2">
+								Search
+							</label>
+							<input
+								id="view-booking-search"
+								name="view-booking-search"
+								type="text"
+								value={searchTerm}
+								onChange={(event) => setSearchTerm(event.target.value)}
+								placeholder={SEARCH_PLACEHOLDER}
+								className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+								data-testid="view-booking-search"
+							/>
+						</div>
+						<div>
+							<label htmlFor="view-booking-start-date" className="block text-sm font-medium text-gray-700 mb-2">
+								Start Date
+							</label>
+							<DatePicker
+								id="view-booking-start-date"
+								selected={startDate}
+								onChange={(date: Date | null) => setStartDate(date)}
+								placeholderText="YYYY-MM-DD"
+								filterDate={isWeekday}
+								className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
+								data-testid="view-booking-start-date"
+								name="view-booking-start-date"
+							/>
+						</div>
+						<div>
+							<label htmlFor="view-booking-end-date" className="block text-sm font-medium text-gray-700 mb-2">
+								End Date
+							</label>
+							<DatePicker
+								id="view-booking-end-date"
+								selected={endDate}
+								onChange={(date: Date | null) => setEndDate(date)}
+								placeholderText="YYYY-MM-DD"
+								filterDate={isWeekday}
+								className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
+								data-testid="view-booking-end-date"
+								name="view-booking-end-date"
+							/>
+						</div>
+						<div>
+							<label htmlFor="view-booking-sort" className="block text-sm font-medium text-gray-700 mb-2">
+								Sort by
+							</label>
+							<select
+								id="view-booking-sort"
+								name="view-booking-sort"
+								value={sortOrder}
+								onChange={(event) => setSortOrder(event.target.value as "newest" | "oldest")}
+								className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+								data-testid="view-booking-sort"
+							>
+								<option value="newest">Newest first</option>
+								<option value="oldest">Oldest first</option>
+							</select>
+						</div>
+						<div>
+							<button
+								onClick={handleClearFilters}
+								className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+								data-testid="view-booking-clear"
+								id="view-booking-clear"
+							>
+								Clear Filters
+							</button>
+						</div>
+					</div>
+				</section>
+
+				<div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 rounded-lg bg-white">
+					<table className="min-w-full divide-y divide-gray-200" data-testid="view-booking-table" id="view-booking-table">
+						<thead className="bg-gray-50">
+							<tr>
+								<th scope="col" className="py-3.5 pl-6 pr-3 text-left text-sm font-semibold text-gray-900">
+									Booked Seat
+								</th>
+								<th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+									Date
+								</th>
+								<th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+									Start Time
+								</th>
+								<th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+									End Time
+								</th>
+								<th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+									Created At
+								</th>
+								<th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
+									Action
+								</th>
+							</tr>
+						</thead>
+						<tbody className="divide-y divide-gray-200 bg-white">
+							{filteredBookings.length === 0 ? (
+								<tr>
+									<td colSpan={6} className="py-6 text-center text-sm text-gray-500">
+										{EMPTY_MESSAGE}
+									</td>
+								</tr>
+							) : (
+								filteredBookings.map((booking) => (
+									<tr key={booking.id} data-testid={`view-booking-row-${booking.id}`} id={`view-booking-row-${booking.id}`}>
+										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
+											<span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">{booking.bookedSeat}</span>
+										</td>
+										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">{booking.bookingDate}</td>
+										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">{booking.bookingStartTime}</td>
+										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">{booking.bookingEndTime}</td>
+										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">{booking.createdAt}</td>
+										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
+											<button
+												onClick={() => handleStartCancel(booking)}
+												className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 transition-colors"
+												data-testid={`view-booking-cancel-${booking.id}`}
+												id={`view-booking-cancel-${booking.id}`}
+											>
+												Cancel
+											</button>
+										</td>
+									</tr>
+								))
+							)}
+						</tbody>
+					</table>
+				</div>
+
+				<p className="mt-4 text-sm text-gray-600" data-testid="view-booking-count" id="view-booking-count">
+					Showing <span className="font-semibold">{filteredBookings.length}</span> of <span className="font-semibold">{bookings.length}</span> bookings
+				</p>
+			</main>
+
+			{cancelBooking && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title">
+					<div className="w-full max-w-md rounded-lg bg-white shadow-lg" data-testid="cancel-booking-modal" id="cancel-booking-modal">
+						<div className="border-b px-6 py-4">
+							<h2 className="text-lg font-semibold text-gray-900" id="cancel-booking-title">
+								Cancel Booking
+							</h2>
+						</div>
+						<div className="px-6 py-4">
+							<p className="text-sm text-gray-600">
+								Are you sure you want to cancel the booking for <span className="font-semibold">{cancelBooking.bookedSeat}</span>?
+							</p>
+						</div>
+						<div className="flex justify-end gap-3 border-t px-6 py-4">
+							<button
+								onClick={handleCloseCancel}
+								className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+								data-testid="cancel-booking-close"
+								id="cancel-booking-close"
+							>
+								Keep Booking
+							</button>
+							<button
+								onClick={handleConfirmCancel}
+								className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+								data-testid="cancel-booking-confirm"
+								id="cancel-booking-confirm"
+							>
+								Confirm Cancel
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
