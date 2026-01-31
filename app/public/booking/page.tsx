@@ -27,13 +27,53 @@ interface BookingModalData {
 	timeSlots?: TimeSlot[];
 }
 
+interface BookingSlot {
+	start: number;
+	end: number;
+}
+
+const BOOKING_START_HOUR = 9;
+const BOOKING_END_HOUR = 18;
+const AM_END_HOUR = 12;
+const PM_START_HOUR = 12;
+const HOURS_PER_DAY = BOOKING_END_HOUR - BOOKING_START_HOUR;
+const DEFAULT_START_TIME = BOOKING_START_HOUR;
+const DEFAULT_END_TIME = BOOKING_START_HOUR + 1;
+
+const formatDateYmd = (date: Date): string => {
+	const year = date.getFullYear();
+	const month = String(date.getMonth() + 1).padStart(2, "0");
+	const day = String(date.getDate()).padStart(2, "0");
+	return `${year}-${month}-${day}`;
+};
+
+const parseDateYmd = (dateString: string): Date => new Date(`${dateString}T00:00:00`);
+
+const isWeekday = (date: Date): boolean => {
+	const day = date.getDay();
+	return day !== 0 && day !== 6;
+};
+
+const buildHourlySlots = (): BookingSlot[] =>
+	Array.from({ length: HOURS_PER_DAY }, (_, index) => ({
+		start: BOOKING_START_HOUR + index,
+		end: BOOKING_START_HOUR + index + 1,
+	}));
+
+const getSlotKey = (slot: BookingSlot): string => `${slot.start}-${slot.end}`;
+
+const parseSlotKey = (slotKey: string): BookingSlot => {
+	const [start, end] = slotKey.split("-").map(Number);
+	return { start, end };
+};
+
 export default function BookingPage() {
 	const [selectedDesk, setSelectedDesk] = useState<string | null>(null);
 	const [hoveredDesk, setHoveredDesk] = useState<string | null>(null);
 	const [showModal, setShowModal] = useState(false);
 	const [modalData, setModalData] = useState<BookingModalData | null>(null);
-	const [startTime, setStartTime] = useState(9);
-	const [endTime, setEndTime] = useState(10);
+	const [startTime, setStartTime] = useState(DEFAULT_START_TIME);
+	const [endTime, setEndTime] = useState(DEFAULT_END_TIME);
 	const [isLoading, setIsLoading] = useState(false);
 	const [selectedDate, setSelectedDate] = useState(() => {
 		const today = new Date();
@@ -46,12 +86,17 @@ export default function BookingPage() {
 			// Saturday - add 2 days to get Monday
 			today.setDate(today.getDate() + 2);
 		}
-		return today.toISOString().split("T")[0];
+		return formatDateYmd(today);
 	});
 	const [isRecurring, setIsRecurring] = useState(false);
 	const [recurringPattern, setRecurringPattern] = useState<"daily" | "weekly">("daily");
 	const [showDailyInfo, setShowDailyInfo] = useState(false);
 	const [showWeeklyInfo, setShowWeeklyInfo] = useState(false);
+	const [isBulkBooking, setIsBulkBooking] = useState(false);
+	const [bulkDateInput, setBulkDateInput] = useState<Date | null>(() => parseDateYmd(selectedDate));
+	const [bulkSelectedDates, setBulkSelectedDates] = useState<string[]>(() => [selectedDate]);
+	const [bulkSelectedDeskIds, setBulkSelectedDeskIds] = useState<string[]>([]);
+	const [bulkSelectedSlots, setBulkSelectedSlots] = useState<string[]>([]);
 	const [recurringEndDate, setRecurringEndDate] = useState(() => {
 		const today = new Date();
 		const dayOfWeek = today.getDay();
@@ -63,7 +108,7 @@ export default function BookingPage() {
 		}
 		// Add 7 days from the adjusted start date
 		today.setDate(today.getDate() + 7);
-		return today.toISOString().split("T")[0];
+		return formatDateYmd(today);
 	});
 
 	const desks: Desk[] = [
@@ -163,24 +208,24 @@ export default function BookingPage() {
 
 	const getDeskColor = (desk: Desk): string => {
 		if (selectedDesk === desk.id) {
-			return "bg-blue-500 hover:bg-blue-500 text-white";
+			return "bg-blue-100 text-blue-800 border border-blue-200";
 		}
 
 		if (hoveredDesk === desk.id && (desk.status === "available" || desk.status === "partially-booked")) {
-			return "bg-yellow-400 text-black";
+			return "bg-yellow-100 text-yellow-800 border border-yellow-200";
 		}
 
 		switch (desk.status) {
 			case "available":
-				return "bg-green-500 hover:bg-yellow-400 text-white";
+				return "bg-green-100 text-green-800 border border-green-200 hover:bg-yellow-100 hover:text-yellow-800";
 			case "booked":
-				return "bg-red-500 text-white cursor-not-allowed";
+				return "bg-red-100 text-red-800 border border-red-200 cursor-not-allowed";
 			case "unavailable":
-				return "bg-gray-400 text-white cursor-not-allowed";
+				return "bg-gray-100 text-gray-800 border border-gray-200 cursor-not-allowed";
 			case "partially-booked":
-				return "bg-gradient-to-r from-red-500 to-green-500 hover:bg-yellow-400 text-white";
+				return "bg-gradient-to-r from-red-100 to-green-100 text-gray-900 border border-yellow-200";
 			default:
-				return "bg-gray-300";
+				return "bg-gray-100 text-gray-800 border border-gray-200";
 		}
 	};
 
@@ -193,6 +238,80 @@ export default function BookingPage() {
 		if (!timeSlots) return false;
 		const slot = timeSlots.find((s) => s.status === "available" && selectedStart >= s.start && selectedStart < s.end);
 		return slot ? hour > selectedStart && hour <= slot.end : false;
+	};
+
+	const hourlySlots = buildHourlySlots();
+
+	const getPeriodAvailability = (desk: Desk, periodStart: number, periodEnd: number): DeskStatus => {
+		if (desk.status === "unavailable") return "unavailable";
+		if (desk.status === "booked") return "booked";
+		if (!desk.timeSlots) return "unavailable";
+
+		let hasAvailable = false;
+		let hasBooked = false;
+		desk.timeSlots.forEach((slot) => {
+			const overlaps = slot.end > periodStart && slot.start < periodEnd;
+			if (!overlaps) return;
+			if (slot.status === "available") {
+				hasAvailable = true;
+			} else {
+				hasBooked = true;
+			}
+		});
+
+		if (hasAvailable && hasBooked) return "partially-booked";
+		if (hasAvailable) return "available";
+		if (hasBooked) return "booked";
+		return "unavailable";
+	};
+
+	const getAvailabilityLabel = (status: DeskStatus): string => {
+		switch (status) {
+			case "available":
+				return "Available";
+			case "booked":
+				return "Booked";
+			case "unavailable":
+				return "Unavailable";
+			case "partially-booked":
+				return "Partial";
+			default:
+				return "Unavailable";
+		}
+	};
+
+	const getAvailabilityClassName = (status: DeskStatus): string => {
+		switch (status) {
+			case "available":
+				return "bg-green-100 text-green-800 border-green-200";
+			case "booked":
+				return "bg-red-100 text-red-800 border-red-200";
+			case "unavailable":
+				return "bg-gray-100 text-gray-800 border-gray-200";
+			case "partially-booked":
+				return "bg-yellow-100 text-yellow-800 border-yellow-200";
+			default:
+				return "bg-gray-100 text-gray-800 border-gray-200";
+		}
+	};
+
+	const toggleBulkDesk = (deskId: string) => {
+		setBulkSelectedDeskIds((current) => (current.includes(deskId) ? current.filter((id) => id !== deskId) : [...current, deskId]));
+	};
+
+	const toggleBulkSlot = (slotKey: string) => {
+		setBulkSelectedSlots((current) => (current.includes(slotKey) ? current.filter((key) => key !== slotKey) : [...current, slotKey]));
+	};
+
+	const handleAddBulkDate = () => {
+		if (!bulkDateInput) return;
+		if (!isWeekday(bulkDateInput)) return;
+		const dateValue = formatDateYmd(bulkDateInput);
+		setBulkSelectedDates((current) => (current.includes(dateValue) ? current : [...current, dateValue]));
+	};
+
+	const handleRemoveBulkDate = (dateValue: string) => {
+		setBulkSelectedDates((current) => current.filter((date) => date !== dateValue));
 	};
 
 	const handleDeskClick = (desk: Desk) => {
@@ -219,26 +338,22 @@ export default function BookingPage() {
 		if (!isRecurring) return [selectedDate];
 
 		const dates: string[] = [];
-		const start = new Date(selectedDate);
-		const end = new Date(recurringEndDate);
+		const start = parseDateYmd(selectedDate);
+		const end = parseDateYmd(recurringEndDate);
 
 		if (recurringPattern === "daily") {
 			let current = new Date(start);
 			while (current <= end) {
-				const dayOfWeek = current.getDay();
-				// Only include weekdays (1 = Monday, 5 = Friday)
-				if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-					dates.push(current.toISOString().split("T")[0]);
+				if (isWeekday(current)) {
+					dates.push(formatDateYmd(current));
 				}
 				current.setDate(current.getDate() + 1);
 			}
 		} else if (recurringPattern === "weekly") {
 			let current = new Date(start);
 			while (current <= end) {
-				const dayOfWeek = current.getDay();
-				// Only include weekdays
-				if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-					dates.push(current.toISOString().split("T")[0]);
+				if (isWeekday(current)) {
+					dates.push(formatDateYmd(current));
 				}
 				current.setDate(current.getDate() + 7);
 			}
@@ -253,6 +368,47 @@ export default function BookingPage() {
 		setIsLoading(true);
 
 		try {
+			if (isBulkBooking) {
+				if (bulkSelectedDates.length === 0 || bulkSelectedDeskIds.length === 0 || bulkSelectedSlots.length === 0) {
+					alert("Please select at least one date, seat, and time slot for bulk booking.");
+					setIsLoading(false);
+					return;
+				}
+
+				const bulkBookings = bulkSelectedDeskIds.flatMap((deskId) =>
+					bulkSelectedDates.flatMap((dateValue) =>
+						bulkSelectedSlots.map((slotKey) => {
+							const slot = parseSlotKey(slotKey);
+							return {
+								deskId,
+								date: dateValue,
+								startTime: slot.start,
+								endTime: slot.end,
+							};
+						}),
+					),
+				);
+
+				await new Promise((resolve) => setTimeout(resolve, 1000));
+				console.log("Bulk booking confirmed:", {
+					bookings: bulkBookings,
+					isRecurring: isRecurring,
+				});
+
+				alert(`${bulkBookings.length} bulk bookings confirmed.`);
+				setShowModal(false);
+				setSelectedDesk(null);
+				setStartTime(DEFAULT_START_TIME);
+				setEndTime(DEFAULT_END_TIME);
+				setIsRecurring(false);
+				setIsBulkBooking(false);
+				setBulkSelectedDeskIds([]);
+				setBulkSelectedSlots([]);
+				setBulkSelectedDates([selectedDate]);
+				setBulkDateInput(parseDateYmd(selectedDate));
+				return;
+			}
+
 			const bookingDates = generateRecurringDates();
 
 			// TODO: Replace with actual backend API call
@@ -291,8 +447,8 @@ export default function BookingPage() {
 			alert(message);
 			setShowModal(false);
 			setSelectedDesk(null);
-			setStartTime(9);
-			setEndTime(10);
+			setStartTime(DEFAULT_START_TIME);
+			setEndTime(DEFAULT_END_TIME);
 			setIsRecurring(false);
 		} catch (error) {
 			console.error("Booking error:", error);
@@ -304,9 +460,14 @@ export default function BookingPage() {
 	const handleCloseModal = () => {
 		setShowModal(false);
 		setSelectedDesk(null);
-		setStartTime(9);
-		setEndTime(10);
+		setStartTime(DEFAULT_START_TIME);
+		setEndTime(DEFAULT_END_TIME);
 		setIsRecurring(false);
+		setIsBulkBooking(false);
+		setBulkSelectedDeskIds([]);
+		setBulkSelectedSlots([]);
+		setBulkSelectedDates([selectedDate]);
+		setBulkDateInput(parseDateYmd(selectedDate));
 	};
 
 	const renderTimelineTooltip = (desk: Desk) => {
@@ -319,11 +480,11 @@ export default function BookingPage() {
 				<div className="text-xs font-semibold mb-1 text-white">Booking Status</div>
 				<div className="flex items-center gap-1 mb-2">
 					{desk.timeSlots.map((slot, index) => {
-						const widthPercentage = ((slot.end - slot.start) / 9) * 100;
+						const widthPercentage = ((slot.end - slot.start) / HOURS_PER_DAY) * 100;
 						return (
 							<div
 								key={index}
-								className={`h-2 ${slot.status === "available" ? "bg-green-400" : "bg-red-400"}`}
+								className={`h-2 ${slot.status === "available" ? "bg-green-200" : "bg-red-200"}`}
 								style={{ width: `${widthPercentage}%` }}
 								title={`${slot.start}:00 - ${slot.end}:00`}
 							></div>
@@ -362,19 +523,16 @@ export default function BookingPage() {
 						</label>
 						<DatePicker
 							id="booking-date"
-							selected={selectedDate ? new Date(selectedDate + "T00:00:00") : null}
+							selected={selectedDate ? parseDateYmd(selectedDate) : null}
 							onChange={(date: Date | null) => {
 								if (date) {
-									const year = date.getFullYear();
-									const month = String(date.getMonth() + 1).padStart(2, "0");
-									const day = String(date.getDate()).padStart(2, "0");
-									setSelectedDate(`${year}-${month}-${day}`);
+									const formattedDate = formatDateYmd(date);
+									setSelectedDate(formattedDate);
+									setBulkDateInput(parseDateYmd(formattedDate));
+									setBulkSelectedDates((current) => (current.length === 1 && current[0] === selectedDate ? [formattedDate] : current));
 								}
 							}}
-							filterDate={(date) => {
-								const day = date.getDay();
-								return day !== 0 && day !== 6;
-							}}
+							filterDate={isWeekday}
 							minDate={new Date()}
 							dateFormat="yyyy-MM-dd"
 							data-testid="date-picker"
@@ -383,30 +541,71 @@ export default function BookingPage() {
 						<p className="text-xs text-gray-600 mt-1">Weekends are not available for booking</p>
 					</div>
 					<div className="mb-8">
+						<h2 className="text-xl font-semibold text-gray-800 mb-4">Seat Availability</h2>
+						<div className="overflow-x-auto" data-testid="seat-availability">
+							<table className="min-w-full border border-gray-200 text-sm text-black">
+								<thead className="bg-gray-50">
+									<tr>
+										<th className="px-4 py-2 text-left font-semibold">Seat</th>
+										<th className="px-4 py-2 text-left font-semibold">AM</th>
+										<th className="px-4 py-2 text-left font-semibold">PM</th>
+									</tr>
+								</thead>
+								<tbody>
+									{desks.map((desk) => {
+										const amStatus = getPeriodAvailability(desk, BOOKING_START_HOUR, AM_END_HOUR);
+										const pmStatus = getPeriodAvailability(desk, PM_START_HOUR, BOOKING_END_HOUR);
+										return (
+											<tr key={`availability-${desk.id}`} className="border-t border-gray-200">
+												<td className="px-4 py-2 font-medium">{desk.name}</td>
+												<td className="px-4 py-2">
+													<span
+														data-testid={`availability-${desk.id}-am`}
+														className={`inline-flex items-center px-2 py-1 rounded border text-xs font-semibold ${getAvailabilityClassName(amStatus)}`}
+													>
+														{getAvailabilityLabel(amStatus)}
+													</span>
+												</td>
+												<td className="px-4 py-2">
+													<span
+														data-testid={`availability-${desk.id}-pm`}
+														className={`inline-flex items-center px-2 py-1 rounded border text-xs font-semibold ${getAvailabilityClassName(pmStatus)}`}
+													>
+														{getAvailabilityLabel(pmStatus)}
+													</span>
+												</td>
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</div>
+					</div>
+					<div className="mb-8">
 						<h2 className="text-xl font-semibold text-gray-800 mb-4">Floor Plan</h2>
 						<div className="mb-6 flex flex-wrap gap-4 text-sm text-black">
 							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-green-500 rounded"></div>
+								<div className="w-4 h-4 bg-green-100 border border-green-200 rounded"></div>
 								<span className="text-black">Available</span>
 							</div>
 							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-red-500 rounded"></div>
+								<div className="w-4 h-4 bg-red-100 border border-red-200 rounded"></div>
 								<span className="text-black">Booked</span>
 							</div>
 							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-gray-400 rounded"></div>
+								<div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded"></div>
 								<span className="text-black">Unavailable</span>
 							</div>
 							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-blue-500 rounded"></div>
+								<div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded"></div>
 								<span className="text-black">Selected</span>
 							</div>
 							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-yellow-400 rounded"></div>
+								<div className="w-4 h-4 bg-yellow-100 border border-yellow-200 rounded"></div>
 								<span className="text-black">Hover</span>
 							</div>
 							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-gradient-to-r from-red-500 to-green-500 rounded"></div>
+								<div className="w-4 h-4 bg-gradient-to-r from-red-100 to-green-100 border border-yellow-200 rounded"></div>
 								<span className="text-black">Partially Booked</span>
 							</div>
 						</div>
@@ -452,6 +651,7 @@ export default function BookingPage() {
 									type="checkbox"
 									checked={isRecurring}
 									onChange={(e) => setIsRecurring(e.target.checked)}
+									disabled={isBulkBooking}
 									data-testid="recurring-checkbox"
 									className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
 								/>
@@ -533,20 +733,14 @@ export default function BookingPage() {
 										</label>
 										<DatePicker
 											id="recurring-end-date"
-											selected={recurringEndDate ? new Date(recurringEndDate + "T00:00:00") : null}
+											selected={recurringEndDate ? parseDateYmd(recurringEndDate) : null}
 											onChange={(date: Date | null) => {
 												if (date) {
-													const year = date.getFullYear();
-													const month = String(date.getMonth() + 1).padStart(2, "0");
-													const day = String(date.getDate()).padStart(2, "0");
-													setRecurringEndDate(`${year}-${month}-${day}`);
+													setRecurringEndDate(formatDateYmd(date));
 												}
 											}}
-											filterDate={(date) => {
-												const day = date.getDay();
-												return day !== 0 && day !== 6;
-											}}
-											minDate={selectedDate ? new Date(selectedDate + "T00:00:00") : new Date()}
+											filterDate={isWeekday}
+											minDate={selectedDate ? parseDateYmd(selectedDate) : new Date()}
 											dateFormat="yyyy-MM-dd"
 											data-testid="recurring-end-date"
 											className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-black"
@@ -557,8 +751,8 @@ export default function BookingPage() {
 										<p className="text-xs text-black">
 											{recurringPattern === "weekly" && (
 												<span className="block mb-1">
-													Every {new Date(selectedDate).toLocaleDateString("en-US", { weekday: "long" })} until{" "}
-													{new Date(recurringEndDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+													Every {parseDateYmd(selectedDate).toLocaleDateString("en-US", { weekday: "long" })} until{" "}
+													{parseDateYmd(recurringEndDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
 												</span>
 											)}
 											{generateRecurringDates().length} booking{generateRecurringDates().length > 1 ? "s" : ""} will be created
@@ -577,77 +771,177 @@ export default function BookingPage() {
 								</div>
 							)}
 						</div>
-						<div className="mb-6">
-							<label className="block text-sm font-medium text-black mb-2">Select Time Range</label>
-							<div className="space-y-3">
-								<div className="flex items-center gap-1 mb-3">
-									{modalData.timeSlots?.map((slot, index) => {
-										const widthPercentage = ((slot.end - slot.start) / 9) * 100;
-										return (
-											<div
-												key={index}
-												className={`h-6 flex items-center justify-center text-xs font-semibold ${
-													slot.status === "available" ? "bg-green-500 text-white" : "bg-red-500 text-white"
-												}`}
-												style={{ width: `${widthPercentage}%` }}
+						<div className="mb-6 pb-6 border-b border-gray-200">
+							<label className="flex items-center gap-2 text-sm font-medium text-black mb-4">
+								<input
+									type="checkbox"
+									checked={isBulkBooking}
+									onChange={(e) => {
+										const isChecked = e.target.checked;
+										setIsBulkBooking(isChecked);
+										if (isChecked) {
+											setIsRecurring(false);
+										}
+									}}
+									data-testid="bulk-booking-toggle"
+									className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+								/>
+								Enable bulk booking
+							</label>
+
+							{isBulkBooking && (
+								<div className="ml-6 space-y-4">
+									<div>
+										<label className="block text-sm font-medium text-black mb-2">Dates</label>
+										<div className="flex flex-wrap items-center gap-3">
+											<DatePicker
+												selected={bulkDateInput}
+												onChange={(date: Date | null) => setBulkDateInput(date)}
+												filterDate={isWeekday}
+												minDate={new Date()}
+												dateFormat="yyyy-MM-dd"
+												data-testid="bulk-date-picker"
+												className="block w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-black"
+											/>
+											<button
+												type="button"
+												onClick={handleAddBulkDate}
+												data-testid="bulk-add-date"
+												className="px-3 py-2 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
 											>
-												{slot.start}-{slot.end}
-											</div>
-										);
-									})}
-								</div>
-								<div className="flex justify-between text-xs text-black mb-3">
-									<span>9:00 AM</span>
-									<span>1:00 PM</span>
-									<span>6:00 PM</span>
-								</div>
-								<div className="grid grid-cols-2 gap-4">
-									<div>
-										<label htmlFor="start-time" className="block text-sm font-medium text-black mb-1">
-											Start Time
-										</label>
-										<select
-											id="start-time"
-											value={startTime}
-											onChange={(e) => {
-												const newStart = Number(e.target.value);
-												setStartTime(newStart);
-												if (!isEndTimeAvailable(endTime, newStart, modalData?.timeSlots)) {
-													setEndTime(newStart + 1);
-												}
-											}}
-											data-testid="start-time-select"
-											className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-black"
-										>
-											{Array.from({ length: 9 }, (_, i) => i + 9).map((hour) => (
-												<option key={hour} value={hour} disabled={!isStartTimeAvailable(hour, modalData?.timeSlots)}>
-													{hour}:00 {!isStartTimeAvailable(hour, modalData?.timeSlots) ? "(Unavailable)" : ""}
-												</option>
+												Add date
+											</button>
+										</div>
+										<div className="flex flex-wrap gap-2 mt-2">
+											{bulkSelectedDates.map((dateValue) => (
+												<span key={dateValue} className="inline-flex items-center gap-2 px-2 py-1 bg-gray-100 rounded border text-xs">
+													{dateValue}
+													<button
+														type="button"
+														onClick={() => handleRemoveBulkDate(dateValue)}
+														data-testid={`bulk-remove-date-${dateValue}`}
+														className="text-red-600 hover:text-red-700"
+													>
+														×
+													</button>
+												</span>
 											))}
-										</select>
+										</div>
 									</div>
 									<div>
-										<label htmlFor="end-time" className="block text-sm font-medium text-black mb-1">
-											End Time
-										</label>
-										<select
-											id="end-time"
-											value={endTime}
-											onChange={(e) => setEndTime(Number(e.target.value))}
-											data-testid="end-time-select"
-											className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-black"
-										>
-											{Array.from({ length: 18 - startTime }, (_, i) => i + startTime + 1).map((hour) => (
-												<option key={hour} value={hour} disabled={!isEndTimeAvailable(hour, startTime, modalData?.timeSlots)}>
-													{hour}:00 {!isEndTimeAvailable(hour, startTime, modalData?.timeSlots) ? "(Unavailable)" : ""}
-												</option>
+										<label className="block text-sm font-medium text-black mb-2">Seats</label>
+										<div className="grid grid-cols-2 gap-2">
+											{desks.map((desk) => (
+												<label key={`bulk-seat-${desk.id}`} className="flex items-center gap-2 text-sm text-black">
+													<input
+														type="checkbox"
+														checked={bulkSelectedDeskIds.includes(desk.id)}
+														onChange={() => toggleBulkDesk(desk.id)}
+														disabled={desk.status === "booked" || desk.status === "unavailable"}
+														data-testid={`bulk-seat-${desk.id}`}
+														className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+													/>
+													{desk.name}
+												</label>
 											))}
-										</select>
+										</div>
+									</div>
+									<div>
+										<label className="block text-sm font-medium text-black mb-2">Time Slots</label>
+										<div className="grid grid-cols-2 gap-2">
+											{hourlySlots.map((slot) => {
+												const slotKey = getSlotKey(slot);
+												return (
+													<label key={`bulk-slot-${slotKey}`} className="flex items-center gap-2 text-sm text-black">
+														<input
+															type="checkbox"
+															checked={bulkSelectedSlots.includes(slotKey)}
+															onChange={() => toggleBulkSlot(slotKey)}
+															data-testid={`bulk-slot-${slotKey}`}
+															className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+														/>
+														{slot.start}:00-{slot.end}:00
+													</label>
+												);
+											})}
+										</div>
 									</div>
 								</div>
-								<p className="text-xs text-black mt-2">Duration: {endTime - startTime} hour(s)</p>
-							</div>
+							)}
 						</div>
+						{!isBulkBooking && (
+							<div className="mb-6">
+								<label className="block text-sm font-medium text-black mb-2">Select Time Range</label>
+								<div className="space-y-3">
+									<div className="flex items-center gap-1 mb-3">
+										{modalData.timeSlots?.map((slot, index) => {
+											const widthPercentage = ((slot.end - slot.start) / HOURS_PER_DAY) * 100;
+											return (
+												<div
+													key={index}
+													className={`h-6 flex items-center justify-center text-xs font-semibold ${
+														slot.status === "available" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+													}`}
+													style={{ width: `${widthPercentage}%` }}
+												>
+													{slot.start}-{slot.end}
+												</div>
+											);
+										})}
+									</div>
+									<div className="flex justify-between text-xs text-black mb-3">
+										<span>9:00 AM</span>
+										<span>1:00 PM</span>
+										<span>6:00 PM</span>
+									</div>
+									<div className="grid grid-cols-2 gap-4">
+										<div>
+											<label htmlFor="start-time" className="block text-sm font-medium text-black mb-1">
+												Start Time
+											</label>
+											<select
+												id="start-time"
+												value={startTime}
+												onChange={(e) => {
+													const newStart = Number(e.target.value);
+													setStartTime(newStart);
+													if (!isEndTimeAvailable(endTime, newStart, modalData?.timeSlots)) {
+														setEndTime(newStart + 1);
+													}
+												}}
+												data-testid="start-time-select"
+												className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-black"
+											>
+												{Array.from({ length: HOURS_PER_DAY }, (_, i) => i + BOOKING_START_HOUR).map((hour) => (
+													<option key={hour} value={hour} disabled={!isStartTimeAvailable(hour, modalData?.timeSlots)}>
+														{hour}:00 {!isStartTimeAvailable(hour, modalData?.timeSlots) ? "(Unavailable)" : ""}
+													</option>
+												))}
+											</select>
+										</div>
+										<div>
+											<label htmlFor="end-time" className="block text-sm font-medium text-black mb-1">
+												End Time
+											</label>
+											<select
+												id="end-time"
+												value={endTime}
+												onChange={(e) => setEndTime(Number(e.target.value))}
+												data-testid="end-time-select"
+												className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm text-black"
+											>
+												{Array.from({ length: BOOKING_END_HOUR - startTime }, (_, i) => i + startTime + 1).map((hour) => (
+													<option key={hour} value={hour} disabled={!isEndTimeAvailable(hour, startTime, modalData?.timeSlots)}>
+														{hour}:00 {!isEndTimeAvailable(hour, startTime, modalData?.timeSlots) ? "(Unavailable)" : ""}
+													</option>
+												))}
+											</select>
+										</div>
+									</div>
+									<p className="text-xs text-black mt-2">Duration: {endTime - startTime} hour(s)</p>
+								</div>
+							</div>
+						)}
 
 						<div className="flex gap-4">
 							<button
