@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "api:fetch": "curl -o api-definition/swagger.json http://localhost:3000/api/docs/swagger.json",
+    "api:generate": "openapi --input ./api-definition/swagger.json --output ./src/api --client fetch",
+    "api:update": "npm run api:fetch && npm run api:generate"
   },
   "dependencies": {
     "@archilogic/floor-plan-sdk": "^5.1.17",
@@ -23,6 +26,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "openapi-typescript-codegen": "^0.30.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

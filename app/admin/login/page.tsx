@@ -2,12 +2,13 @@
 
 import { useState, FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { AuthenticationService, OpenAPI, ApiError } from "@/src/api";
 
 export default function AdminLoginPage() {
 	const router = useRouter();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
-	const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+	const [errors, setErrors] = useState<{ email?: string; password?: string; general?: string }>({});
 	const [isLoading, setIsLoading] = useState(false);
 
 	const validateEmail = (email: string): boolean => {
@@ -19,7 +20,7 @@ export default function AdminLoginPage() {
 		e.preventDefault();
 		setErrors({});
 
-		const newErrors: { email?: string; password?: string } = {};
+		const newErrors: { email?: string; password?: string; general?: string } = {};
 
 		if (!email) {
 			newErrors.email = "Email is required";
@@ -39,27 +40,46 @@ export default function AdminLoginPage() {
 		setIsLoading(true);
 
 		try {
-			// TODO: Replace with actual backend API call
-			// const response = await fetch('/api/admin/login', {
-			//   method: 'POST',
-			//   headers: { 'Content-Type': 'application/json' },
-			//   body: JSON.stringify({ email, password }),
-			// });
-			// const data = await response.json();
-			// if (response.ok) {
-			//   // Handle successful login (e.g., store token, redirect)
-			// } else {
-			//   // Handle error
-			// }
+			// Configure API base URL
+			OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
-			// Mock API call
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-			console.log("Login attempt:", { email, password: "***" });
-			
-			// Navigate to view-booking page on successful login
-			router.push('/admin/view-booking');
+			// Call admin login API
+			const response = await AuthenticationService.postApiAuthAdminLogin({
+				email,
+				password,
+			});
+
+			// Store token in localStorage
+			if (response.data?.token) {
+				localStorage.setItem('authToken', response.data.token);
+				localStorage.setItem('userRole', 'admin');
+				localStorage.setItem('adminData', JSON.stringify(response.data.admin));
+
+				// Set token for future API calls
+				OpenAPI.TOKEN = response.data.token;
+
+				console.log("Admin login successful:", response.data.admin);
+				
+				// Navigate to view-booking page on successful login
+				router.push('/admin/view-booking');
+			} else {
+				setErrors({ general: "Invalid response from server" });
+			}
 		} catch (error) {
 			console.error("Login error:", error);
+			
+			if (error instanceof ApiError) {
+				// Handle API errors
+				if (error.status === 401) {
+					setErrors({ general: "Invalid email or password" });
+				} else if (error.body?.data?.errorMessage) {
+					setErrors({ general: error.body.data.errorMessage });
+				} else {
+					setErrors({ general: "An error occurred. Please try again." });
+				}
+			} else {
+				setErrors({ general: "Network error. Please check your connection." });
+			}
 		} finally {
 			setIsLoading(false);
 		}
@@ -100,7 +120,7 @@ export default function AdminLoginPage() {
 								data-testid="email-input"
 								className={`mt-1 block w-full px-3 py-2 border ${
 									errors.email ? "border-red-500" : "border-gray-300"
-								} rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`}
+								} rounded-md shadow-sm placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`}
 								placeholder="admin@example.com"
 							/>
 							{errors.email && (
@@ -131,7 +151,7 @@ export default function AdminLoginPage() {
 								data-testid="password-input"
 								className={`mt-1 block w-full px-3 py-2 border ${
 									errors.password ? "border-red-500" : "border-gray-300"
-								} rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`}
+								} rounded-md shadow-sm placeholder-gray-400 text-gray-900 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm`}
 								placeholder="Enter your password"
 							/>
 							{errors.password && (
@@ -144,6 +164,15 @@ export default function AdminLoginPage() {
 							)}
 						</div>
 					</div>
+
+					{errors.general && (
+						<div
+							className="rounded-md bg-red-50 p-4"
+							data-testid="general-error"
+						>
+							<p className="text-sm text-red-800">{errors.general}</p>
+						</div>
+					)}
 
 					<div>
 						<button
