@@ -184,7 +184,8 @@ export default function ViewBookingPage() {
                   }}
                   onBlur={() => setOpenPickerId(null)}
                   placeholder="YYYY-MM-DD"
-                  className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
+                  className="block w-full px-4 py-2 text-base text-black border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
+                  style={{ color: 'black !important' }}
                 />
               </div>
               <div>
@@ -201,7 +202,8 @@ export default function ViewBookingPage() {
                   }}
                   onBlur={() => setOpenPickerId(null)}
                   placeholder="YYYY-MM-DD"
-                  className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
+                  className="block w-full px-4 py-2 text-base text-black border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
+                  style={{ color: 'black !important' }}
                 />
               </div>
               <div className="flex items-end">
