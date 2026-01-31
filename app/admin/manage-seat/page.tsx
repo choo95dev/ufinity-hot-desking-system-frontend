@@ -1,346 +1,472 @@
-'use client'
+'use client';
 
-import { useEffect, useRef, useState } from 'react'
-import '@archilogic/floor-plan-sdk/dist/style.css'
-import { deskApi } from '@/app/lib/api'
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import styles from './page.module.css';
 
-interface Desk {
-  id: string
-  position: [number, number]
-  name: string
-  description: string
-  isBlocked: boolean
+interface DateRange {
+  start: string;
+  end: string;
 }
 
-interface TooltipState {
-  visible: boolean
-  deskId: string | null
-  x: number
-  y: number
+interface Seat {
+  id: string;
+  number: string;
+  x: number;
+  y: number;
+  timeperiod: string;
+  dateRanges: DateRange[];
+  description: string;
+  blocked: boolean;
 }
 
-export default function ManageSeatPage() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const floorPlanRef = useRef<any>(null)
-  const [desks, setDesks] = useState<Desk[]>([])
-  const [tooltip, setTooltip] = useState<TooltipState>({
-    visible: false,
-    deskId: null,
-    x: 0,
-    y: 0,
-  })
-  const [editingDeskId, setEditingDeskId] = useState<string | null>(null)
-  const [editingDeskName, setEditingDeskName] = useState('')
-  const [editingDeskDescription, setEditingDeskDescription] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+interface SeatEditForm {
+  seatId: string;
+  number: string;
+  timeperiod: string;
+  dateRanges: DateRange[];
+  description: string;
+  blocked: boolean;
+}
 
-  // Initialize Floor Plan SDK
+export default function AdminManageSeatPage() {
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [seats, setSeats] = useState<Seat[]>([]);
+  const [selectedSeat, setSelectedSeat] = useState<Seat | null>(null);
+  const [editForm, setEditForm] = useState<SeatEditForm | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const imageRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load data from localStorage on component mount
   useEffect(() => {
-    const initFloorPlan = async () => {
+    const loadSavedData = () => {
       try {
-        // Dynamic import to avoid SSR issues
-        const { FloorPlanEngine } = await import('@archilogic/floor-plan-sdk')
+        const savedImage = localStorage.getItem('adminSeatPlan_image');
+        const savedSeats = localStorage.getItem('adminSeatPlan_seats');
 
-        if (!containerRef.current) return
+        if (savedImage) {
+          setUploadedImage(savedImage);
+        }
 
-        const floorPlan = new FloorPlanEngine({
-          container: containerRef.current,
-        })
-
-        floorPlanRef.current = floorPlan
-
-        // Mock floor data - you can replace with actual floor ID and token
-        // For now, we'll just set up the SDK without loading a real floor
-        // to allow users to interact with the seat plan image
-        
-        // Initialize with sample desks
-        const initialDesks: Desk[] = [
-          { id: 'desk-1', position: [2, 2], name: 'Desk 1', description: 'Corner desk near window', isBlocked: false },
-          { id: 'desk-2', position: [4, 2], name: 'Desk 2', description: 'Standard desk', isBlocked: false },
-          { id: 'desk-3', position: [6, 2], name: 'Desk 3', description: 'Standing desk', isBlocked: false },
-          { id: 'desk-4', position: [2, 4], name: 'Desk 4', description: 'Standard desk with monitor', isBlocked: false },
-          { id: 'desk-5', position: [4, 4], name: 'Desk 5', description: 'Meeting desk', isBlocked: true },
-        ]
-
-        setDesks(initialDesks)
-
-        // Add HTML markers for each desk
-        initialDesks.forEach((desk) => {
-          const markerEl = document.createElement('div')
-          markerEl.classList.add('desk-marker')
-          markerEl.style.width = '40px'
-          markerEl.style.height = '40px'
-          markerEl.style.backgroundColor = desk.isBlocked ? '#ef4444' : '#10b981'
-          markerEl.style.borderRadius = '50%'
-          markerEl.style.display = 'flex'
-          markerEl.style.alignItems = 'center'
-          markerEl.style.justifyContent = 'center'
-          markerEl.style.color = 'white'
-          markerEl.style.fontWeight = 'bold'
-          markerEl.style.cursor = 'pointer'
-          markerEl.style.fontSize = '12px'
-          markerEl.textContent = desk.name.split(' ')[1]
-
-          markerEl.addEventListener('click', (e) => {
-            e.stopPropagation()
-            const rect = markerEl.getBoundingClientRect()
-            setTooltip({
-              visible: true,
-              deskId: desk.id,
-              x: rect.left,
-              y: rect.bottom,
-            })
-          })
-
-          floorPlan.addHtmlMarker({
-            position: desk.position,
-            el: markerEl,
-          })
-        })
-
-        // Close tooltip when clicking on floor plan
-        floorPlan.on('click', () => {
-          setTooltip({ ...tooltip, visible: false })
-        })
+        if (savedSeats) {
+          const parsedSeats = JSON.parse(savedSeats);
+          // Ensure all seats have dateRanges property
+          const normalizedSeats = parsedSeats.map((seat: any) => ({
+            ...seat,
+            dateRanges: seat.dateRanges || [],
+          }));
+          setSeats(normalizedSeats);
+        }
       } catch (error) {
-        console.error('Failed to initialize Floor Plan SDK:', error)
+        console.error('Error loading saved data:', error);
       }
+    };
+
+    loadSavedData();
+  }, []);
+
+  // Handle image upload
+  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setUploadedImage(event.target?.result as string);
+        // Reset seats when new image is uploaded
+        setSeats([]);
+        setSelectedSeat(null);
+        setShowForm(false);
+      };
+      reader.readAsDataURL(file);
     }
+  };
 
-    initFloorPlan()
-  }, [])
+  // Handle seat click to position a new seat
+  const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!uploadedImage) return;
 
-  const handleEditDesk = (deskId: string) => {
-    const desk = desks.find((d) => d.id === deskId)
-    if (desk) {
-      setEditingDeskId(deskId)
-      setEditingDeskName(desk.name)
-      setEditingDeskDescription(desk.description)
-    }
-  }
+    const rect = imageRef.current?.getBoundingClientRect();
+    if (!rect) return;
 
-  const handleSaveDesk = async () => {
-    if (editingDeskId) {
-      setIsLoading(true)
-      setError(null)
-      
-      const response = await deskApi.updateDesk({
-        id: editingDeskId,
-        name: editingDeskName,
-        description: editingDeskDescription,
-      })
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
-      if (response.success) {
-        setDesks(
-          desks.map((d) =>
-            d.id === editingDeskId ? { ...d, name: editingDeskName, description: editingDeskDescription } : d
-          )
-        )
-        setEditingDeskId(null)
-        setEditingDeskName('')
-        setEditingDeskDescription('')
-        setTooltip({ ...tooltip, visible: false })
-      } else {
-        setError(response.error || 'Failed to update desk')
-      }
-      
-      setIsLoading(false)
-    }
-  }
+    // Check if clicking on existing seat
+    const clickedSeat = seats.find(seat => {
+      const distance = Math.sqrt((seat.x - x) ** 2 + (seat.y - y) ** 2);
+      return distance < 25;
+    });
 
-  const handleToggleBlock = async (deskId: string) => {
-    setIsLoading(true)
-    setError(null)
-    
-    const desk = desks.find((d) => d.id === deskId)
-    if (!desk) {
-      setIsLoading(false)
-      return
-    }
-
-    const response = await deskApi.toggleDeskBlock({
-      id: deskId,
-      isBlocked: !desk.isBlocked,
-    })
-
-    if (response.success) {
-      setDesks(
-        desks.map((d) =>
-          d.id === deskId ? { ...d, isBlocked: !d.isBlocked } : d
-        )
-      )
-      setTooltip({ ...tooltip, visible: false })
+    if (clickedSeat) {
+      setSelectedSeat(clickedSeat);
+      setEditForm({
+        seatId: clickedSeat.id,
+        number: clickedSeat.number,
+        timeperiod: clickedSeat.timeperiod,
+        dateRanges: clickedSeat.dateRanges || [],
+        description: clickedSeat.description,
+        blocked: clickedSeat.blocked,
+      });
+      setShowForm(true);
     } else {
-      setError(response.error || 'Failed to toggle desk block status')
+      // Add new seat with default values
+      const newSeat: Seat = {
+        id: `seat-${Date.now()}`,
+        number: `Seat ${seats.length + 1}`,
+        x,
+        y,
+        timeperiod: 'Anytime',
+        dateRanges: [],
+        description: '',
+        blocked: false,
+      };
+      setSeats([...seats, newSeat]);
+      setSelectedSeat(newSeat);
+      setEditForm({
+        seatId: newSeat.id,
+        number: newSeat.number,
+        timeperiod: newSeat.timeperiod,
+        dateRanges: newSeat.dateRanges,
+        description: newSeat.description,
+        blocked: newSeat.blocked,
+      });
+      setShowForm(true);
     }
-    
-    setIsLoading(false)
-  }
+  };
 
-  const selectedDesk = desks.find((d) => d.id === tooltip.deskId)
+  // Handle form submission
+  const handleFormSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!editForm) return;
+
+    setSeats(seats.map(seat =>
+      seat.id === editForm.seatId
+        ? {
+            ...seat,
+            number: editForm.number,
+            timeperiod: editForm.timeperiod,
+            dateRanges: editForm.dateRanges || [],
+            description: editForm.description,
+            blocked: editForm.blocked,
+          }
+        : seat
+    ));
+
+    setShowForm(false);
+    setSelectedSeat(null);
+    setEditForm(null);
+  };
+
+  // Handle form input changes
+  const handleFormChange = (field: keyof SeatEditForm, value: string | boolean | DateRange[]) => {
+    if (editForm) {
+      setEditForm({
+        ...editForm,
+        [field]: value,
+      });
+    }
+  };
+
+  // Add date range
+  const handleAddDateRange = () => {
+    if (!editForm) return;
+    const today = new Date().toISOString().split('T')[0];
+    const newDateRange: DateRange = { start: today, end: today };
+    handleFormChange('dateRanges', [...editForm.dateRanges, newDateRange]);
+  };
+
+  // Update date range
+  const handleUpdateDateRange = (index: number, field: 'start' | 'end', value: string) => {
+    if (!editForm) return;
+    const updatedRanges = [...editForm.dateRanges];
+    updatedRanges[index] = { ...updatedRanges[index], [field]: value };
+    handleFormChange('dateRanges', updatedRanges);
+  };
+
+  // Remove date range
+  const handleRemoveDateRange = (index: number) => {
+    if (!editForm) return;
+    const updatedRanges = editForm.dateRanges.filter((_, i) => i !== index);
+    handleFormChange('dateRanges', updatedRanges);
+  };
+
+  // Check if there are unsaved changes
+  const hasChanges = () => {
+    if (!editForm || !selectedSeat) return false;
+
+    const dateRangesEqual = JSON.stringify(editForm.dateRanges) === JSON.stringify(selectedSeat.dateRanges);
+
+    return (
+      editForm.number !== selectedSeat.number ||
+      editForm.timeperiod !== selectedSeat.timeperiod ||
+      !dateRangesEqual ||
+      editForm.description !== selectedSeat.description ||
+      editForm.blocked !== selectedSeat.blocked
+    );
+  };
+
+  // Delete seat
+  const handleDeleteSeat = () => {
+    if (!selectedSeat) return;
+    setSeats(seats.filter(seat => seat.id !== selectedSeat.id));
+    setShowForm(false);
+    setSelectedSeat(null);
+    setEditForm(null);
+  };
+
+  // Save all seats (persist to localStorage and call API)
+  const handleSaveAll = async () => {
+    setIsSaving(true);
+    try {
+      // Prepare data
+      const seatPlanData = {
+        image: uploadedImage,
+        seats: seats,
+        savedAt: new Date().toISOString(),
+      };
+
+      // TODO: Replace with actual API call when backend is ready
+      // const response = await fetch('/api/admin/seat-plans', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify(seatPlanData),
+      // });
+      // const result = await response.json();
+
+      // For now, persist to localStorage
+      localStorage.setItem('adminSeatPlan_image', uploadedImage || '');
+      localStorage.setItem('adminSeatPlan_seats', JSON.stringify(seats));
+
+      console.log('Seat plan saved:', seatPlanData);
+      alert('Seat plan saved successfully! Data persisted locally.');
+      
+      // Here you can add code to send to backend when ready:
+      // Example API call structure:
+      // const response = await fetch('http://your-backend-api/seat-plans', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify(seatPlanData),
+      // });
+      // if (!response.ok) throw new Error('Failed to save');
+    } catch (error) {
+      console.error('Error saving seat plan:', error);
+      alert('Failed to save seat plan');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
-    <div className="h-screen w-full flex flex-col bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 p-6">
-        <h1 className="text-3xl font-bold text-gray-900">Manage Seats</h1>
-        <p className="text-gray-600 mt-2">
-          Click on desk markers to edit or block/unblock seats
-        </p>
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <h1>Manage Seats</h1>
+        <p>Upload an office image and configure seats</p>
       </div>
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden gap-6 p-6">
-        {/* Floor Plan Container */}
-        <div className="flex-1">
-          <div
-            ref={containerRef}
-            className="w-full h-full bg-white rounded-lg border border-gray-200 shadow-sm"
-            style={{ minHeight: '500px' }}
-          />
-        </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageUpload}
+        className={styles.hiddenInput}
+      />
 
-        {/* Desks List Sidebar */}
-        <div className="w-80 bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Desks ({desks.length})
-            </h2>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            <div className="divide-y divide-gray-200">
-              {desks.map((desk) => (
+      {!uploadedImage && (
+        <div className={styles.uploadSection}>
+          <button
+            className={styles.uploadButton}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Upload Office Image
+          </button>
+        </div>
+      )}
+
+      {uploadedImage && (
+        <div className={styles.mainContent}>
+          <div className={styles.seatPlanSection}>
+            <h2>Seat Plan Editor</h2>
+            <p className={styles.instruction}>Click on the image to add seats or click on existing seats to edit</p>
+            <div
+              ref={imageRef}
+              className={styles.canvasContainer}
+              onClick={handleCanvasClick}
+              style={{
+                backgroundImage: `url(${uploadedImage})`,
+                backgroundSize: 'contain',
+                backgroundRepeat: 'no-repeat',
+                position: 'relative',
+              }}
+            >
+              {seats.map(seat => (
                 <div
-                  key={desk.id}
-                  className="p-4 hover:bg-gray-50 transition-colors"
+                  key={seat.id}
+                  className={`${styles.seatMarker} ${selectedSeat?.id === seat.id ? styles.selected : ''} ${seat.blocked ? styles.blocked : ''}`}
+                  style={{
+                    left: `${seat.x}px`,
+                    top: `${seat.y}px`,
+                  }}
+                  title={seat.number}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{desk.name}</p>
-                      <p className="text-sm text-gray-500">{desk.description}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Position: ({desk.position[0]}, {desk.position[1]})
-                      </p>
-                    </div>
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        desk.isBlocked ? 'bg-red-500' : 'bg-green-500'
-                      }`}
-                    />
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      onClick={() => handleEditDesk(desk.id)}
-                      disabled={isLoading}
-                      className="flex-1 px-3 py-1 text-sm bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleToggleBlock(desk.id)}
-                      disabled={isLoading}
-                      className={`flex-1 px-3 py-1 text-sm rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                        desk.isBlocked
-                          ? 'bg-green-50 text-green-600 hover:bg-green-100'
-                          : 'bg-red-50 text-red-600 hover:bg-red-100'
-                      }`}
-                    >
-                      {desk.isBlocked ? 'Unblock' : 'Block'}
-                    </button>
-                  </div>
+                  {seat.number}
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Tooltip */}
-      {tooltip.visible && selectedDesk && (
-        <div
-          className="fixed bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50"
-          style={{
-            left: `${tooltip.x}px`,
-            top: `${tooltip.y}px`,
-            minWidth: '200px',
-          }}
-        >
-          <p className="font-semibold text-gray-900 mb-1">{selectedDesk.name}</p>
-          <p className="text-sm text-gray-600 mb-3">{selectedDesk.description}</p>
-          <div className="space-y-2">
-            <button
-              onClick={() => handleEditDesk(tooltip.deskId!)}
-              disabled={isLoading}
-              className="w-full px-3 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? 'Loading...' : 'Edit'}
-            </button>
-            <button
-              onClick={() => handleToggleBlock(tooltip.deskId!)}
-              disabled={isLoading}
-              className={`w-full px-3 py-2 text-sm rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                selectedDesk.isBlocked
-                  ? 'bg-green-500 text-white hover:bg-green-600'
-                  : 'bg-red-500 text-white hover:bg-red-600'
-              }`}
-            >
-              {isLoading ? 'Loading...' : selectedDesk.isBlocked ? 'Unblock' : 'Block'}
-            </button>
+          <div className={styles.editSection}>
+            {showForm && editForm && (
+              <form onSubmit={handleFormSubmit} className={styles.editForm}>
+                <div className={styles.formHeader}>
+                  <h3>Edit Seat</h3>
+                  <label className={styles.blockToggle}>
+                    <input
+                      type="checkbox"
+                      checked={editForm.blocked}
+                      onChange={(e) => handleFormChange('blocked', e.target.checked)}
+                    />
+                    <span className={styles.blockLabel}>
+                      {editForm.blocked ? 'Blocked' : 'Available'}
+                    </span>
+                  </label>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label htmlFor="seatNumber">Seat Number:</label>
+                  <input
+                    id="seatNumber"
+                    type="text"
+                    value={editForm.number}
+                    onChange={(e) => handleFormChange('number', e.target.value)}
+                    placeholder="e.g., A1, B2"
+                  />
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label htmlFor="timeperiod">Time Period:</label>
+                  <select
+                    id="timeperiod"
+                    value={editForm.timeperiod}
+                    onChange={(e) => handleFormChange('timeperiod', e.target.value)}
+                  >
+                    <option>9AM-5PM</option>
+                    <option>9AM-12PM</option>
+                    <option>12PM-5PM</option>
+                    <option>Anytime</option>
+                    <option>Custom</option>
+                  </select>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label>Date Periods:</label>
+                  <div className={styles.dateRangesContainer}>
+                    {editForm.dateRanges.length === 0 ? (
+                      <p className={styles.noDateRanges}>No date ranges set. Available for booking anytime.</p>
+                    ) : (
+                      editForm.dateRanges.map((range, index) => (
+                        <div key={index} className={styles.dateRangeItem}>
+                          <input
+                            type="date"
+                            value={range.start}
+                            onChange={(e) => handleUpdateDateRange(index, 'start', e.target.value)}
+                          />
+                          <span className={styles.dateSeparator}>→</span>
+                          <input
+                            type="date"
+                            value={range.end}
+                            onChange={(e) => handleUpdateDateRange(index, 'end', e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className={styles.removeButton}
+                            onClick={() => handleRemoveDateRange(index)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.addDateRangeButton}
+                    onClick={handleAddDateRange}
+                  >
+                    Add Date Range
+                  </button>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label htmlFor="description">Description:</label>
+                  <textarea
+                    id="description"
+                    value={editForm.description}
+                    onChange={(e) => handleFormChange('description', e.target.value)}
+                    placeholder="Add any notes about this seat"
+                    rows={3}
+                  />
+                </div>
+
+                <div className={styles.formActions}>
+                  {hasChanges() && (
+                    <button type="submit" className={styles.saveButton}>
+                      Save
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={styles.deleteButton}
+                    onClick={handleDeleteSeat}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.cancelButton}
+                    onClick={() => {
+                      setShowForm(false);
+                      setSelectedSeat(null);
+                      setEditForm(null);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {!showForm && (
+              <div className={styles.stats}>
+                <h3>Seat Statistics</h3>
+                <p>Total Seats: {seats.length}</p>
+                <p>Blocked Seats: {seats.filter(s => s.blocked).length}</p>
+                <p>Available Seats: {seats.filter(s => !s.blocked).length}</p>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Edit Modal */}
-      {editingDeskId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-96 shadow-lg">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
-              Edit Desk
-            </h3>
-            {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-                {error}
-              </div>
-            )}
-            <input
-              type="text"
-              value={editingDeskName}
-              onChange={(e) => setEditingDeskName(e.target.value)}
-              disabled={isLoading}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
-              placeholder="Desk name"
-            />
-            <textarea
-              value={editingDeskDescription}
-              onChange={(e) => setEditingDeskDescription(e.target.value)}
-              disabled={isLoading}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
-              placeholder="Desk description"
-              rows={3}
-            />
-            <div className="flex gap-2 justify-end">
-              <button
-                onClick={() => {
-                  setEditingDeskId(null)
-                  setError(null)
-                }}
-                disabled={isLoading}
-                className="px-4 py-2 text-sm bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveDesk}
-                disabled={isLoading}
-                className="px-4 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isLoading ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
+      {uploadedImage && seats.length > 0 && (
+        <div className={styles.actionBar}>
+          <button className={styles.uploadNewButton} onClick={() => {
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+              fileInputRef.current.click();
+            }
+          }}>
+            Upload New Image
+          </button>
+          <button 
+            className={styles.saveSeatButton} 
+            onClick={handleSaveAll}
+            disabled={isSaving}
+          >
+            {isSaving ? 'Saving...' : 'Save All Seats'}
+          </button>
         </div>
       )}
     </div>
-  )
+  );
 }
