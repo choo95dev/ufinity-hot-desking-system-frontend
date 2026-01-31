@@ -2,8 +2,8 @@
 
 import { SetStateAction, useEffect, useState } from "react";
 import Link from "next/link";
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
+import DatePickerInput from "../../components/DatePickerInput";
+import { extractDate, formatDateYmd } from "../../lib/utils/date";
 
 interface Booking {
 	id: string;
@@ -17,20 +17,6 @@ interface Booking {
 const PAGE_TITLE = "View Bookings";
 const EMPTY_MESSAGE = "No bookings available.";
 const SEARCH_PLACEHOLDER = "Search by seat, date, or time";
-
-const extractDate = (bookedAt: string): string => bookedAt.split(" ")[0];
-
-const formatDateYmd = (date: Date): string => {
-	const year = date.getFullYear();
-	const month = String(date.getMonth() + 1).padStart(2, "0");
-	const day = String(date.getDate()).padStart(2, "0");
-	return `${year}-${month}-${day}`;
-};
-
-const isWeekday = (date: Date): boolean => {
-	const day = date.getDay();
-	return day !== 0 && day !== 6;
-};
 
 /**
  * Fetch booking records for the public view.
@@ -228,30 +214,25 @@ export default function PublicViewBookingPage() {
 							<label htmlFor="view-booking-start-date" className="block text-sm font-medium text-gray-700 mb-2">
 								Start Date
 							</label>
-							<DatePicker
+							<DatePickerInput
 								id="view-booking-start-date"
+								name="view-booking-start-date"
 								selected={startDate}
 								onChange={(date: Date | null) => setStartDate(date)}
-								placeholderText="YYYY-MM-DD"
-								filterDate={isWeekday}
-								className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
-								data-testid="view-booking-start-date"
-								name="view-booking-start-date"
+								dataTestId="view-booking-start-date"
 							/>
 						</div>
 						<div>
 							<label htmlFor="view-booking-end-date" className="block text-sm font-medium text-gray-700 mb-2">
 								End Date
 							</label>
-							<DatePicker
+							<DatePickerInput
 								id="view-booking-end-date"
+								name="view-booking-end-date"
 								selected={endDate}
 								onChange={(date: Date | null) => setEndDate(date)}
-								placeholderText="YYYY-MM-DD"
-								filterDate={isWeekday}
-								className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
-								data-testid="view-booking-end-date"
-								name="view-booking-end-date"
+								minDate={startDate}
+								dataTestId="view-booking-end-date"
 							/>
 						</div>
 						<div>
