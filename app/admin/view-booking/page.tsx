@@ -9,6 +9,7 @@ interface Booking {
   bookedSeat: string;
   bookingTime: string;
   bookedAt: string;
+  createdAt: string;
 }
 
 // Mock API function
@@ -22,6 +23,7 @@ const fetchBookings = async (): Promise<Booking[]> => {
       bookedSeat: 'A-01',
       bookingTime: '09:00 AM - 05:00 PM',
       bookedAt: '2026-01-28 08:30 AM',
+      createdAt: '2026-01-27 03:15 PM',
     },
     {
       userId: 'U002',
@@ -29,6 +31,7 @@ const fetchBookings = async (): Promise<Booking[]> => {
       bookedSeat: 'B-03',
       bookingTime: '10:00 AM - 04:00 PM',
       bookedAt: '2026-01-28 09:15 AM',
+      createdAt: '2026-01-27 04:22 PM',
     },
     {
       userId: 'U003',
@@ -36,6 +39,7 @@ const fetchBookings = async (): Promise<Booking[]> => {
       bookedSeat: 'A-05',
       bookingTime: '08:00 AM - 06:00 PM',
       bookedAt: '2026-01-27 04:45 PM',
+      createdAt: '2026-01-26 02:10 PM',
     },
     {
       userId: 'U004',
@@ -43,6 +47,7 @@ const fetchBookings = async (): Promise<Booking[]> => {
       bookedSeat: 'C-02',
       bookingTime: '09:30 AM - 05:30 PM',
       bookedAt: '2026-01-28 07:00 AM',
+      createdAt: '2026-01-27 05:45 PM',
     },
     {
       userId: 'U005',
@@ -50,14 +55,23 @@ const fetchBookings = async (): Promise<Booking[]> => {
       bookedSeat: 'B-01',
       bookingTime: '08:30 AM - 04:30 PM',
       bookedAt: '2026-01-27 03:20 PM',
+      createdAt: '2026-01-26 01:30 PM',
     },
   ];
+};
+
+// Extract date from booking datetime string
+const extractDate = (bookedAt: string): string => {
+  return bookedAt.split(' ')[0]; // Extract YYYY-MM-DD
 };
 
 export default function ViewBookingPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [filteredBookings, setFilteredBookings] = useState<Booking[]>([]);
 
   useEffect(() => {
     const loadBookings = async () => {
@@ -65,6 +79,7 @@ export default function ViewBookingPage() {
         setIsLoading(true);
         const data = await fetchBookings();
         setBookings(data);
+        setFilteredBookings(data);
         setError(null);
       } catch (err) {
         setError('Failed to load bookings');
@@ -76,6 +91,32 @@ export default function ViewBookingPage() {
 
     loadBookings();
   }, []);
+
+  // Filter bookings based on date range
+  useEffect(() => {
+    let filtered = bookings;
+
+    if (startDate) {
+      filtered = filtered.filter((booking) => {
+        const bookingDate = extractDate(booking.bookedAt);
+        return bookingDate >= startDate;
+      });
+    }
+
+    if (endDate) {
+      filtered = filtered.filter((booking) => {
+        const bookingDate = extractDate(booking.bookedAt);
+        return bookingDate <= endDate;
+      });
+    }
+
+    setFilteredBookings(filtered);
+  }, [bookings, startDate, endDate]);
+
+  const handleClearFilters = () => {
+    setStartDate('');
+    setEndDate('');
+  };
 
   if (isLoading) {
     return (
@@ -113,6 +154,47 @@ export default function ViewBookingPage() {
             </div>
           )}
 
+          {/* Date Filter Section */}
+          <div className="bg-white shadow rounded-lg p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Filter by Booking Date Time</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  onFocus={(e) => e.currentTarget.showPicker?.()}
+                  placeholder="YYYY-MM-DD"
+                  className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  onFocus={(e) => e.currentTarget.showPicker?.()}
+                  placeholder="YYYY-MM-DD"
+                  className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={handleClearFilters}
+                  className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg">
             <table className="min-w-full divide-y divide-gray-300">
               <thead className="bg-gray-50">
@@ -127,41 +209,50 @@ export default function ViewBookingPage() {
                     Booked Seat
                   </th>
                   <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                    Booking Time
+                    Booking Date Time
                   </th>
                   <th className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                    Booked At
+                    Created At
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {bookings.map((booking) => (
-                  <tr key={booking.userId}>
-                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
-                      {booking.userId}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                      {booking.userName}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                      <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
-                        {booking.bookedSeat}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                      {booking.bookingTime}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                      {booking.bookedAt}
+                {filteredBookings.length > 0 ? (
+                  filteredBookings.map((booking) => (
+                    <tr key={booking.userId}>
+                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
+                        {booking.userId}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {booking.userName}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        <span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
+                          {booking.bookedSeat}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {booking.bookedAt}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {booking.createdAt}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="py-4 text-center text-sm text-gray-500">
+                      No bookings found for the selected date range.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
 
           <div className="mt-4 text-sm text-gray-600">
-            Total bookings: <span className="font-semibold">{bookings.length}</span>
+            Showing <span className="font-semibold">{filteredBookings.length}</span> of{' '}
+            <span className="font-semibold">{bookings.length}</span> bookings
           </div>
         </div>
       </div>

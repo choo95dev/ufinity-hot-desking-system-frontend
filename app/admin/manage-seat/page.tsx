@@ -1,6 +1,7 @@
 'use client';
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import styles from './page.module.css';
 
 interface DateRange {
@@ -262,6 +263,11 @@ export default function AdminManageSeatPage() {
       <div className={styles.header}>
         <h1>Manage Seats</h1>
         <p>Upload an office image and configure seats</p>
+        <div className={styles.headerActions}>
+          <Link href="/admin/view-booking" className={styles.viewBookingsLink}>
+            View Bookings
+          </Link>
+        </div>
       </div>
 
       <input
