@@ -9,13 +9,18 @@ interface DateRange {
   end: string;
 }
 
+interface TimeRange {
+  start: string;
+  end: string;
+}
+
 interface Seat {
   id: string;
   number: string;
   x: number;
   y: number;
-  timeperiod: string;
   dateRanges: DateRange[];
+  timeRange: TimeRange;
   description: string;
   blocked: boolean;
 }
@@ -23,8 +28,8 @@ interface Seat {
 interface SeatEditForm {
   seatId: string;
   number: string;
-  timeperiod: string;
   dateRanges: DateRange[];
+  timeRange: TimeRange;
   description: string;
   blocked: boolean;
 }
@@ -36,6 +41,7 @@ export default function AdminManageSeatPage() {
   const [editForm, setEditForm] = useState<SeatEditForm | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [openPickerId, setOpenPickerId] = useState<string | null>(null);
   const imageRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -104,8 +110,8 @@ export default function AdminManageSeatPage() {
       setEditForm({
         seatId: clickedSeat.id,
         number: clickedSeat.number,
-        timeperiod: clickedSeat.timeperiod,
         dateRanges: clickedSeat.dateRanges || [],
+        timeRange: clickedSeat.timeRange,
         description: clickedSeat.description,
         blocked: clickedSeat.blocked,
       });
@@ -117,8 +123,8 @@ export default function AdminManageSeatPage() {
         number: `Seat ${seats.length + 1}`,
         x,
         y,
-        timeperiod: 'Anytime',
         dateRanges: [],
+        timeRange: { start: '09:00', end: '17:00' },
         description: '',
         blocked: false,
       };
@@ -127,8 +133,8 @@ export default function AdminManageSeatPage() {
       setEditForm({
         seatId: newSeat.id,
         number: newSeat.number,
-        timeperiod: newSeat.timeperiod,
         dateRanges: newSeat.dateRanges,
+        timeRange: newSeat.timeRange,
         description: newSeat.description,
         blocked: newSeat.blocked,
       });
@@ -146,8 +152,8 @@ export default function AdminManageSeatPage() {
         ? {
             ...seat,
             number: editForm.number,
-            timeperiod: editForm.timeperiod,
             dateRanges: editForm.dateRanges || [],
+            timeRange: editForm.timeRange,
             description: editForm.description,
             blocked: editForm.blocked,
           }
@@ -197,10 +203,11 @@ export default function AdminManageSeatPage() {
     if (!editForm || !selectedSeat) return false;
 
     const dateRangesEqual = JSON.stringify(editForm.dateRanges) === JSON.stringify(selectedSeat.dateRanges);
+    const timeRangeEqual = JSON.stringify(editForm.timeRange) === JSON.stringify(selectedSeat.timeRange);
 
     return (
       editForm.number !== selectedSeat.number ||
-      editForm.timeperiod !== selectedSeat.timeperiod ||
+      !timeRangeEqual ||
       !dateRangesEqual ||
       editForm.description !== selectedSeat.description ||
       editForm.blocked !== selectedSeat.blocked
@@ -214,6 +221,19 @@ export default function AdminManageSeatPage() {
     setShowForm(false);
     setSelectedSeat(null);
     setEditForm(null);
+  };
+
+  // Toggle date/time picker
+  const handleDateTimePickerClick = (pickerId: string, inputRef: HTMLInputElement | null) => {
+    if (openPickerId === pickerId) {
+      // Picker is already open, close it by blurring
+      inputRef?.blur();
+      setOpenPickerId(null);
+    } else {
+      // Open the picker
+      inputRef?.showPicker?.();
+      setOpenPickerId(pickerId);
+    }
   };
 
   // Save all seats (persist to localStorage and call API)
@@ -350,21 +370,6 @@ export default function AdminManageSeatPage() {
                 </div>
 
                 <div className={styles.formGroup}>
-                  <label htmlFor="timeperiod">Time Period:</label>
-                  <select
-                    id="timeperiod"
-                    value={editForm.timeperiod}
-                    onChange={(e) => handleFormChange('timeperiod', e.target.value)}
-                  >
-                    <option>9AM-5PM</option>
-                    <option>9AM-12PM</option>
-                    <option>12PM-5PM</option>
-                    <option>Anytime</option>
-                    <option>Custom</option>
-                  </select>
-                </div>
-
-                <div className={styles.formGroup}>
                   <label>Date Periods:</label>
                   <div className={styles.dateRangesContainer}>
                     {editForm.dateRanges.length === 0 ? (
@@ -376,12 +381,17 @@ export default function AdminManageSeatPage() {
                             type="date"
                             value={range.start}
                             onChange={(e) => handleUpdateDateRange(index, 'start', e.target.value)}
+                            onClick={(e) => handleDateTimePickerClick(`dateStart-${index}`, e.currentTarget)}
+                            onBlur={() => setOpenPickerId(null)}
                           />
                           <span className={styles.dateSeparator}>→</span>
                           <input
                             type="date"
                             value={range.end}
+                            min={range.start}
                             onChange={(e) => handleUpdateDateRange(index, 'end', e.target.value)}
+                            onClick={(e) => handleDateTimePickerClick(`dateEnd-${index}`, e.currentTarget)}
+                            onBlur={() => setOpenPickerId(null)}
                           />
                           <button
                             type="button"
@@ -401,6 +411,28 @@ export default function AdminManageSeatPage() {
                   >
                     Add Date Range
                   </button>
+                </div>
+
+                <div className={styles.formGroup}>
+                  <label>Time Range:</label>
+                  <div className={styles.timeRangeContainer}>
+                    <input
+                      type="time"
+                      value={editForm.timeRange.start}
+                      onChange={(e) => handleFormChange('timeRange', { ...editForm.timeRange, start: e.target.value })}
+                      onClick={(e) => handleDateTimePickerClick('timeStart', e.currentTarget)}
+                      onBlur={() => setOpenPickerId(null)}
+                    />
+                    <span className={styles.timeSeparator}>→</span>
+                    <input
+                      type="time"
+                      value={editForm.timeRange.end}
+                      min={editForm.timeRange.start}
+                      onChange={(e) => handleFormChange('timeRange', { ...editForm.timeRange, end: e.target.value })}
+                      onClick={(e) => handleDateTimePickerClick('timeEnd', e.currentTarget)}
+                      onBlur={() => setOpenPickerId(null)}
+                    />
+                  </div>
                 </div>
 
                 <div className={styles.formGroup}>

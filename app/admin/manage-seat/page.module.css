@@ -33,20 +33,18 @@
 
 .viewBookingsLink {
   padding: 10px 20px;
-  background: #757575;
+  background: #1976d2;
   color: white;
   border-radius: 4px;
   font-size: 14px;
   font-weight: 500;
   text-decoration: none;
   transition: background 0.2s ease;
-  box-shadow: 0 3px 1px -2px rgba(0, 0, 0, 0.2), 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 1px 5px 0 rgba(0, 0, 0, 0.12);
   display: inline-block;
 }
 
 .viewBookingsLink:hover {
-  background: #616161;
-  box-shadow: 0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14), 0 3px 14px 2px rgba(0, 0, 0, 0.12);
+  background: #1565c0;
 }
 
 .uploadSection {
@@ -67,14 +65,12 @@
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease;
   font-weight: 500;
-  box-shadow: 0 3px 1px -2px rgba(0, 0, 0, 0.2), 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 1px 5px 0 rgba(0, 0, 0, 0.12);
 }
 
 .uploadButton:hover {
   background: #1565c0;
-  box-shadow: 0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14), 0 3px 14px 2px rgba(0, 0, 0, 0.12);
 }
 
 .hiddenInput {
@@ -85,7 +81,7 @@
   max-width: 1400px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 1fr 380px;
+  grid-template-columns: 1fr 450px;
   gap: 24px;
   margin-bottom: 24px;
 }
@@ -148,17 +144,14 @@
   padding: 0;
   box-sizing: border-box;
   word-wrap: break-word;
-  box-shadow: 0 3px 1px -2px rgba(0, 0, 0, 0.2), 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 1px 5px 0 rgba(0, 0, 0, 0.12);
 }
 
 .seatMarker:hover {
   transform: translate(-50%, -50%) scale(1.15);
-  box-shadow: 0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14), 0 3px 14px 2px rgba(0, 0, 0, 0.12);
 }
 
 .seatMarker.selected {
   background: #1976d2;
-  box-shadow: 0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14), 0 3px 14px 2px rgba(0, 0, 0, 0.12);
   width: 20px;
   height: 20px;
   font-size: 7px;
@@ -167,7 +160,6 @@
 .seatMarker.blocked {
   background: #d32f2f;
   opacity: 0.8;
-  box-shadow: 0 3px 1px -2px rgba(0, 0, 0, 0.2), 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 1px 5px 0 rgba(0, 0, 0, 0.12);
 }
 
 .editSection {
@@ -312,6 +304,8 @@
   padding: 12px;
   margin-bottom: 10px;
   border: 1px solid #e0e0e0;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .noDateRanges {
@@ -331,6 +325,7 @@
 
 .dateRangeItem input[type="date"] {
   flex: 1;
+  min-width: 120px;
   padding: 8px;
   font-size: 13px;
 }
@@ -355,6 +350,7 @@
   transition: all 0.2s;
   font-weight: 500;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .removeButton:hover {
@@ -379,6 +375,33 @@
   background: #e3f2fd;
 }
 
+.timeRangeContainer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.timeRangeContainer input[type="time"] {
+  flex: 1;
+  padding: 8px;
+  font-size: 13px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+.timeRangeContainer input[type="time"]:focus {
+  outline: none;
+  border-color: #1976d2;
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+.timeSeparator {
+  color: #9e9e9e;
+  font-weight: 500;
+  padding: 0 4px;
+}
+
 .formActions {
   display: flex;
   flex-direction: column;
@@ -395,8 +418,7 @@
   cursor: pointer;
   font-weight: 500;
   font-size: 14px;
-  transition: all 0.2s ease;
-  box-shadow: 0 3px 1px -2px rgba(0, 0, 0, 0.2), 0 2px 2px 0 rgba(0, 0, 0, 0.14), 0 1px 5px 0 rgba(0, 0, 0, 0.12);
+  transition: background 0.2s ease;
 }
 
 .saveButton {
@@ -406,7 +428,6 @@
 
 .saveButton:hover {
   background: #2e7d32;
-  box-shadow: 0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14), 0 3px 14px 2px rgba(0, 0, 0, 0.12);
 }
 
 .deleteButton {
@@ -416,13 +437,11 @@
 
 .deleteButton:hover {
   background: #c62828;
-  box-shadow: 0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14), 0 3px 14px 2px rgba(0, 0, 0, 0.12);
 }
 
 .cancelButton {
   background: #e0e0e0;
   color: #212121;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 8px 16px rgba(0, 0, 0, 0.06);
 }
 
 .cancelButton:hover {
@@ -459,43 +478,38 @@
   padding: 12px 28px;
   font-size: 15px;
   border: none;
-  border-radius: 10px;
+  border-radius: 4px;
   cursor: pointer;
   font-weight: 600;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  transition: background 0.2s ease;
 }
 
 .uploadNewButton {
-  background: linear-gradient(135deg, #666 0%, #555 100%);
+  background: #757575;
   color: white;
 }
 
 .uploadNewButton:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  background: #616161;
 }
 
 .uploadNewButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-  transform: none;
 }
 
 .saveSeatButton {
-  background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+  background: #1976d2;
   color: white;
 }
 
 .saveSeatButton:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 102, 204, 0.3);
+  background: #1565c0;
 }
 
 .saveSeatButton:disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: not-allowed;
-  transform: none;
 }
 
 @media (max-width: 768px) {

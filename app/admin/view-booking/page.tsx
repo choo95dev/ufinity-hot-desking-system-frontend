@@ -72,6 +72,7 @@ export default function ViewBookingPage() {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [filteredBookings, setFilteredBookings] = useState<Booking[]>([]);
+  const [openPickerId, setOpenPickerId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadBookings = async () => {
@@ -118,6 +119,18 @@ export default function ViewBookingPage() {
     setEndDate('');
   };
 
+  const handleDatePickerClick = (pickerId: string, inputRef: HTMLInputElement | null) => {
+    if (openPickerId === pickerId) {
+      // Picker is already open, close it by blurring
+      inputRef?.blur();
+      setOpenPickerId(null);
+    } else {
+      // Open the picker
+      inputRef?.showPicker?.();
+      setOpenPickerId(pickerId);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -137,7 +150,7 @@ export default function ViewBookingPage() {
             <div className="flex items-center">
               <Link
                 href="/admin/manage-seat"
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+                className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 transition-colors"
               >
                 Manage Seat
               </Link>
@@ -166,7 +179,10 @@ export default function ViewBookingPage() {
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  onFocus={(e) => e.currentTarget.showPicker?.()}
+                  onClick={(e) => {
+                    handleDatePickerClick('startDate', e.currentTarget);
+                  }}
+                  onBlur={() => setOpenPickerId(null)}
                   placeholder="YYYY-MM-DD"
                   className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
                 />
@@ -178,8 +194,12 @@ export default function ViewBookingPage() {
                 <input
                   type="date"
                   value={endDate}
+                  min={startDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  onFocus={(e) => e.currentTarget.showPicker?.()}
+                  onClick={(e) => {
+                    handleDatePickerClick('endDate', e.currentTarget);
+                  }}
+                  onBlur={() => setOpenPickerId(null)}
                   placeholder="YYYY-MM-DD"
                   className="block w-full px-4 py-2 text-base border-2 border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors cursor-pointer"
                 />
@@ -187,7 +207,7 @@ export default function ViewBookingPage() {
               <div className="flex items-end">
                 <button
                   onClick={handleClearFilters}
-                  className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors"
+                  className="w-full px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 transition-colors"
                 >
                   Clear Filters
                 </button>
