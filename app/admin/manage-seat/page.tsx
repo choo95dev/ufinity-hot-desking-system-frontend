@@ -1,7 +1,10 @@
 'use client';
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { FloorPlansService, OpenAPI, FloorPlan } from '@/src/api';
+import { toast } from 'sonner';
+import { getAuthToken } from '@/utils/auth';
 import styles from './page.module.css';
 
 interface DateRange {
@@ -36,8 +39,22 @@ interface SeatEditForm {
   type: 'SOLO' | 'TEAM';
 }
 
+interface PaginatedFloorPlanResponse {
+  statusCode: number;
+  data: {
+    items: FloorPlan[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  };
+}
+
 export default function AdminManageSeatPage() {
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [floorPlan, setFloorPlan] = useState<FloorPlan | null>(null);
+  const [isLoadingFloorPlan, setIsLoadingFloorPlan] = useState(true);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [selectedSeat, setSelectedSeat] = useState<Seat | null>(null);
   const [editForm, setEditForm] = useState<SeatEditForm | null>(null);
@@ -45,56 +62,56 @@ export default function AdminManageSeatPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [openPickerId, setOpenPickerId] = useState<string | null>(null);
   const imageRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load data from localStorage on component mount
+  // Load floor plan from API
   useEffect(() => {
-    const loadSavedData = () => {
+    const loadFloorPlan = async () => {
+      setIsLoadingFloorPlan(true);
       try {
-        const savedImage = localStorage.getItem('adminSeatPlan_image');
-        const savedSeats = localStorage.getItem('adminSeatPlan_seats');
-
-        if (savedImage) {
-          setUploadedImage(savedImage);
+        OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+        
+        const token = getAuthToken();
+        if (token) {
+          OpenAPI.TOKEN = token;
         }
 
-        if (savedSeats) {
-          const parsedSeats = JSON.parse(savedSeats);
-          // Ensure all seats have dateRanges and type property
-          const normalizedSeats = parsedSeats.map((seat: any) => ({
-            ...seat,
-            dateRanges: seat.dateRanges || [],
-            type: seat.type || 'SOLO',
-          }));
-          setSeats(normalizedSeats);
+        const response = await FloorPlansService.getApiFloorPlans(
+          1,
+          1
+        ) as unknown as PaginatedFloorPlanResponse;
+        
+        const firstFloorPlan = response.data?.items?.[0];
+        if (firstFloorPlan) {
+          setFloorPlan(firstFloorPlan);
+          
+          // Load saved seats for this floor plan from localStorage
+          const savedSeats = localStorage.getItem(`adminSeatPlan_seats_${firstFloorPlan.id}`);
+          if (savedSeats) {
+            const parsedSeats = JSON.parse(savedSeats) as Seat[];
+            const normalizedSeats = parsedSeats.map((seat) => ({
+              ...seat,
+              dateRanges: seat.dateRanges || [],
+              type: seat.type || 'SOLO' as const,
+            }));
+            setSeats(normalizedSeats);
+          }
+        } else {
+          toast.error('No floor plans found');
         }
-      } catch (error) {
-        console.error('Error loading saved data:', error);
+      } catch (err) {
+        toast.error('Failed to load floor plan');
+        console.error(err);
+      } finally {
+        setIsLoadingFloorPlan(false);
       }
     };
 
-    loadSavedData();
+    loadFloorPlan();
   }, []);
-
-  // Handle image upload
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setUploadedImage(event.target?.result as string);
-        // Reset seats when new image is uploaded
-        setSeats([]);
-        setSelectedSeat(null);
-        setShowForm(false);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   // Handle seat click to position a new seat
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!uploadedImage) return;
+    if (!floorPlan?.image_url) return;
 
     const rect = imageRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -173,7 +190,7 @@ export default function AdminManageSeatPage() {
   };
 
   // Handle form input changes
-  const handleFormChange = (field: keyof SeatEditForm, value: string | boolean | DateRange[]) => {
+  const handleFormChange = (field: keyof SeatEditForm, value: string | boolean | DateRange[] | TimeRange) => {
     if (editForm) {
       setEditForm({
         ...editForm,
@@ -245,11 +262,13 @@ export default function AdminManageSeatPage() {
 
   // Save all seats (persist to localStorage and call API)
   const handleSaveAll = async () => {
+    if (!floorPlan) return;
+    
     setIsSaving(true);
     try {
       // Prepare data
       const seatPlanData = {
-        image: uploadedImage,
+        floorPlanId: floorPlan.id,
         seats: seats,
         savedAt: new Date().toISOString(),
       };
@@ -262,12 +281,11 @@ export default function AdminManageSeatPage() {
       // });
       // const result = await response.json();
 
-      // For now, persist to localStorage
-      localStorage.setItem('adminSeatPlan_image', uploadedImage || '');
-      localStorage.setItem('adminSeatPlan_seats', JSON.stringify(seats));
+      // For now, persist to localStorage with floor plan ID
+      localStorage.setItem(`adminSeatPlan_seats_${floorPlan.id}`, JSON.stringify(seats));
 
       console.log('Seat plan saved:', seatPlanData);
-      alert('Seat plan saved successfully! Data persisted locally.');
+      toast.success('Seat plan saved successfully!');
       
       // Here you can add code to send to backend when ready:
       // Example API call structure:
@@ -279,7 +297,7 @@ export default function AdminManageSeatPage() {
       // if (!response.ok) throw new Error('Failed to save');
     } catch (error) {
       console.error('Error saving seat plan:', error);
-      alert('Failed to save seat plan');
+      toast.error('Failed to save seat plan');
     } finally {
       setIsSaving(false);
     }
@@ -289,7 +307,7 @@ export default function AdminManageSeatPage() {
     <div className={styles.container}>
       <div className={styles.header}>
         <h1>Manage Seats</h1>
-        <p>Upload an office image and configure seats</p>
+        <p>Configure seats on the floor plan</p>
         <div className={styles.headerActions}>
           <Link href="/admin/view-booking" className={styles.viewBookingsLink}>
             View Bookings
@@ -297,36 +315,28 @@ export default function AdminManageSeatPage() {
         </div>
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleImageUpload}
-        className={styles.hiddenInput}
-      />
-
-      {!uploadedImage && (
-        <div className={styles.uploadSection}>
-          <button
-            className={styles.uploadButton}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Upload Office Image
-          </button>
+      {isLoadingFloorPlan ? (
+        <div className={styles.loadingSection}>
+          <p>Loading floor plan...</p>
         </div>
-      )}
-
-      {uploadedImage && (
+      ) : !floorPlan ? (
+        <div className={styles.uploadSection}>
+          <p>No floor plan found. Please create a floor plan first.</p>
+          <Link href="/admin/manage-floor-plan" className={styles.uploadButton}>
+            Go to Floor Plans
+          </Link>
+        </div>
+      ) : (
         <div className={styles.mainContent}>
           <div className={styles.seatPlanSection}>
-            <h2>Seat Plan Editor</h2>
+            <h2>Seat Plan Editor - {floorPlan.name}</h2>
             <p className={styles.instruction}>Click on the image to add seats or click on existing seats to edit</p>
             <div
               ref={imageRef}
               className={styles.canvasContainer}
               onClick={handleCanvasClick}
               style={{
-                backgroundImage: `url(${uploadedImage})`,
+                backgroundImage: `url(${floorPlan.image_url})`,
                 backgroundSize: 'contain',
                 backgroundRepeat: 'no-repeat',
                 position: 'relative',
@@ -519,16 +529,8 @@ export default function AdminManageSeatPage() {
         </div>
       )}
 
-      {uploadedImage && seats.length > 0 && (
+      {floorPlan && seats.length > 0 && (
         <div className={styles.actionBar}>
-          <button className={styles.uploadNewButton} onClick={() => {
-            if (fileInputRef.current) {
-              fileInputRef.current.value = '';
-              fileInputRef.current.click();
-            }
-          }}>
-            Upload New Image
-          </button>
           <button 
             className={styles.saveSeatButton} 
             onClick={handleSaveAll}
