@@ -40,6 +40,7 @@ export default function DatePickerInput({
 			filterDate={isWeekday}
 			className={className}
 			data-testid={dataTestId}
+			popperPlacement="bottom-start"
 		/>
 	);
 }

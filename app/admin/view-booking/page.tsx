@@ -141,7 +141,10 @@ export default function ViewBookingPage() {
 	if (isLoading) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-gray-100">
-				<p className="text-gray-600">Loading bookings...</p>
+				<div className="text-center">
+					<div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+					<p className="mt-4 text-gray-600">Loading bookings...</p>
+				</div>
 			</div>
 		);
 	}
@@ -155,8 +158,8 @@ export default function ViewBookingPage() {
 							<h1 className="text-2xl font-bold text-gray-900">View Bookings</h1>
 						</div>
 						<div className="flex items-center">
-							<Link href="/admin/manage-seat" className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 transition-colors">
-								Manage Seat
+							<Link href="/admin/manage-floor-plan" className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 transition-colors">
+								Manage Floor Plans
 							</Link>
 						</div>
 					</div>
@@ -194,13 +197,28 @@ export default function ViewBookingPage() {
 								<label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-2">
 									Start Date
 								</label>
-								<DatePickerInput id="startDate" name="startDate" selected={startDate} onChange={(date) => setStartDate(date)} dataTestId="start-date-input" />
+								<DatePickerInput 
+									id="startDate" 
+									name="startDate" 
+									selected={startDate} 
+									onChange={(date) => setStartDate(date)} 
+									placeholderText="Select start date"
+									dataTestId="start-date-input" 
+								/>
 							</div>
 							<div>
 								<label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-2">
 									End Date
 								</label>
-								<DatePickerInput id="endDate" name="endDate" selected={endDate} onChange={(date) => setEndDate(date)} minDate={startDate} dataTestId="end-date-input" />
+								<DatePickerInput 
+									id="endDate" 
+									name="endDate" 
+									selected={endDate} 
+									onChange={(date) => setEndDate(date)} 
+									placeholderText="Select end date"
+									minDate={startDate} 
+									dataTestId="end-date-input" 
+								/>
 							</div>
 							<div>
 								<label htmlFor="admin-view-booking-sort" className="block text-sm font-medium text-gray-700 mb-2">
