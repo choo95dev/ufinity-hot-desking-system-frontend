@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { FloorPlansService, OpenAPI, FloorPlan } from '@/src/api';
 import { toast } from 'sonner';
 import { getAuthToken } from '@/utils/auth';
+import AdminSideNav from '@/components/AdminSideNav';
 
 export default function ManageFloorPlanPage() {
 	const router = useRouter();
@@ -63,19 +64,12 @@ export default function ManageFloorPlanPage() {
 	}
 
 	return (
-		<div className="min-h-screen bg-gray-100">
-			<nav className="bg-white shadow">
-				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-					<div className="flex justify-between h-16">
-						<div className="flex items-center">
-							<h1 className="text-2xl font-bold text-gray-900">Manage Floor Plans</h1>
-						</div>
-					</div>
-				</div>
-			</nav>
-
-			<div className="max-w-7xl mx-auto p-6">
-				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+		<div className="min-h-screen bg-gray-100 flex">
+			<AdminSideNav />
+			<div className="flex-1 ml-64 transition-all duration-300">
+				<div className="p-6">
+					<h1 className="text-3xl font-bold text-gray-900 mb-6">Manage Floor Plans</h1>
+					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 					{/* Hardcoded to show only first result */}
 					<div className="bg-white shadow rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
 						<div className="p-4">
@@ -106,6 +100,7 @@ export default function ManageFloorPlanPage() {
 					</div>
 				</div>
 			</div>
+		</div>
 		</div>
 	);
 }
