@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { FloorPlansService, OpenAPI, FloorPlan } from '@/src/api';
+import { FloorPlansService, OpenAPI, FloorPlan, ResourcesService } from '@/src/api';
 import { toast } from 'sonner';
 import { getAuthToken } from '@/utils/auth';
 import styles from './page.module.css';
@@ -84,16 +84,44 @@ export default function AdminManageSeatPage() {
         if (firstFloorPlan) {
           setFloorPlan(firstFloorPlan);
           
-          // Load saved seats for this floor plan from localStorage
-          const savedSeats = localStorage.getItem(`adminSeatPlan_seats_${firstFloorPlan.id}`);
-          if (savedSeats) {
-            const parsedSeats = JSON.parse(savedSeats) as Seat[];
-            const normalizedSeats = parsedSeats.map((seat) => ({
-              ...seat,
-              dateRanges: seat.dateRanges || [],
-              type: seat.type || 'SOLO' as const,
-            }));
-            setSeats(normalizedSeats);
+          // Load existing resources from API for this floor plan
+          try {
+            const resourcesResponse = await ResourcesService.getApiResourcesByFloorPlan(firstFloorPlan.id!);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const resources = (resourcesResponse.data || []) as Array<any>;
+            
+            // Convert resources to seats
+            const loadedSeats: Seat[] = resources
+              .filter(r => r.position_x != null && r.position_y != null)
+              .map((resource) => ({
+                id: `seat-${resource.id}`,
+                number: resource.name || '',
+                x: resource.position_x,
+                y: resource.position_y,
+                dateRanges: [],
+                timeRange: { start: '09:00', end: '17:00' },
+                description: resource.description || '',
+                blocked: !resource.is_active,
+                type: (resource.type || 'SOLO') as 'SOLO' | 'TEAM',
+              }));
+            
+            setSeats(loadedSeats);
+            
+            // Also save to localStorage as cache
+            localStorage.setItem(`adminSeatPlan_seats_${firstFloorPlan.id}`, JSON.stringify(loadedSeats));
+          } catch (err) {
+            console.error('Failed to load resources:', err);
+            // Fallback to localStorage if API fails
+            const savedSeats = localStorage.getItem(`adminSeatPlan_seats_${firstFloorPlan.id}`);
+            if (savedSeats) {
+              const parsedSeats = JSON.parse(savedSeats) as Seat[];
+              const normalizedSeats = parsedSeats.map((seat) => ({
+                ...seat,
+                dateRanges: seat.dateRanges || [],
+                type: seat.type || 'SOLO' as const,
+              }));
+              setSeats(normalizedSeats);
+            }
           }
         } else {
           toast.error('No floor plans found');
@@ -260,41 +288,69 @@ export default function AdminManageSeatPage() {
     }
   };
 
-  // Save all seats (persist to localStorage and call API)
+  // Save all seats (create resources via API)
   const handleSaveAll = async () => {
     if (!floorPlan) return;
     
     setIsSaving(true);
     try {
-      // Prepare data
-      const seatPlanData = {
-        floorPlanId: floorPlan.id,
-        seats: seats,
-        savedAt: new Date().toISOString(),
-      };
+      OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+      const token = getAuthToken();
+      if (token) {
+        OpenAPI.TOKEN = token;
+      }
 
-      // TODO: Replace with actual API call when backend is ready
-      // const response = await fetch('/api/admin/seat-plans', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(seatPlanData),
-      // });
-      // const result = await response.json();
+      let successCount = 0;
+      let errorCount = 0;
 
-      // For now, persist to localStorage with floor plan ID
+      // Create resources for each seat
+      for (const seat of seats) {
+        try {
+          // Create resource
+          const resourceResponse = await ResourcesService.postApiResources({
+            name: seat.number,
+            description: seat.description || '',
+            type: seat.type,
+            capacity: seat.type === 'TEAM' ? 4 : 1, // Default capacity based on type
+            floor: floorPlan.floor || '',
+            building: floorPlan.building || '',
+            time_slot_granularity: 15, // Default 15 minutes
+          });
+
+          const resourceId = resourceResponse.data?.id;
+
+          if (resourceId) {
+            // Update resource position on floor plan
+            await ResourcesService.patchApiResourcesPosition(resourceId, {
+              floor_plan_id: floorPlan.id!,
+              position_x: seat.x,
+              position_y: seat.y,
+            });
+
+            // Set operating hours if date ranges are specified
+            if (seat.dateRanges && seat.dateRanges.length > 0) {
+              // TODO: Implement operating hours API call when endpoint is ready
+              // For now, we'll skip this as the API expects date-based operating hours
+            }
+
+            successCount++;
+          }
+        } catch (err) {
+          console.error(`Failed to create resource for seat ${seat.number}:`, err);
+          errorCount++;
+        }
+      }
+
+      // Also save to localStorage as backup
       localStorage.setItem(`adminSeatPlan_seats_${floorPlan.id}`, JSON.stringify(seats));
 
-      console.log('Seat plan saved:', seatPlanData);
-      toast.success('Seat plan saved successfully!');
-      
-      // Here you can add code to send to backend when ready:
-      // Example API call structure:
-      // const response = await fetch('http://your-backend-api/seat-plans', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify(seatPlanData),
-      // });
-      // if (!response.ok) throw new Error('Failed to save');
+      if (errorCount === 0) {
+        toast.success(`Successfully created ${successCount} resources!`);
+      } else if (successCount > 0) {
+        toast.warning(`Created ${successCount} resources, ${errorCount} failed`);
+      } else {
+        toast.error('Failed to create resources');
+      }
     } catch (error) {
       console.error('Error saving seat plan:', error);
       toast.error('Failed to save seat plan');
