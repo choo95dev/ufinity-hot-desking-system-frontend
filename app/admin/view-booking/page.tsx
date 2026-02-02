@@ -152,7 +152,7 @@ export default function ViewBookingPage() {
 	return (
 		<div className="min-h-screen bg-gray-100 flex">
 			<AdminSideNav />
-			<div className="flex-1 ml-64 transition-all duration-300">
+			<div className="flex-1 ml-48 transition-all duration-300">
 				<div className="p-6">
 					<h1 className="text-3xl font-bold text-gray-900 mb-6">View Bookings</h1>
 				<div className="px-4 py-6 sm:px-0">

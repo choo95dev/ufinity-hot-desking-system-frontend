@@ -1,10 +1,10 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { FloorPlansService, OpenAPI, FloorPlan, ResourcesService } from '@/src/api';
 import { toast } from 'sonner';
 import { getAuthToken } from '@/utils/auth';
+import AdminSideNav from '@/components/AdminSideNav';
 import styles from './page.module.css';
 
 interface DateRange {
@@ -360,16 +360,14 @@ export default function AdminManageSeatPage() {
   };
 
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <h1>Manage Seats</h1>
-        <p>Configure seats on the floor plan</p>
-        <div className={styles.headerActions}>
-          <Link href="/admin/view-booking" className={styles.viewBookingsLink}>
-            View Bookings
-          </Link>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gray-100 flex">
+      <AdminSideNav />
+      <div className="flex-1 ml-48 transition-all duration-300">
+        <div className={styles.container}>
+          <div className={styles.header}>
+            <h1>Manage Seats</h1>
+            <p>Configure seats on the floor plan</p>
+          </div>
 
       {isLoadingFloorPlan ? (
         <div className={styles.loadingSection}>
@@ -378,9 +376,9 @@ export default function AdminManageSeatPage() {
       ) : !floorPlan ? (
         <div className={styles.uploadSection}>
           <p>No floor plan found. Please create a floor plan first.</p>
-          <Link href="/admin/manage-floor-plan" className={styles.uploadButton}>
+          <a href="/admin/manage-floor-plan" className={styles.uploadButton}>
             Go to Floor Plans
-          </Link>
+          </a>
         </div>
       ) : (
         <div className={styles.mainContent}>
@@ -596,6 +594,8 @@ export default function AdminManageSeatPage() {
           </button>
         </div>
       )}
+    </div>
+    </div>
     </div>
   );
 }

@@ -17,7 +17,7 @@ export default function AdminSideNav() {
 	return (
 		<aside
 			className={`fixed left-0 top-0 h-screen bg-white shadow-lg transition-all duration-300 z-50 ${
-				isCollapsed ? "w-16" : "w-64"
+				isCollapsed ? "w-16" : "w-48"
 			}`}
 			data-testid="admin-side-nav"
 		>

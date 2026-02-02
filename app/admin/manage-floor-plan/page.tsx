@@ -66,7 +66,7 @@ export default function ManageFloorPlanPage() {
 	return (
 		<div className="min-h-screen bg-gray-100 flex">
 			<AdminSideNav />
-			<div className="flex-1 ml-64 transition-all duration-300">
+			<div className="flex-1 ml-48 transition-all duration-300">
 				<div className="p-6">
 					<h1 className="text-3xl font-bold text-gray-900 mb-6">Manage Floor Plans</h1>
 					<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
