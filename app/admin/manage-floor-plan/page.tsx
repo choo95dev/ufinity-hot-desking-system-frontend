@@ -68,48 +68,41 @@ export default function ManageFloorPlanPage() {
 				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 					<div className="flex justify-between h-16">
 						<div className="flex items-center">
-							<h1 className="text-2xl font-bold text-gray-900">Floor Plan</h1>
-						</div>
-						<div className="flex items-center">
-							<button
-								onClick={() => router.push('/admin/manage-seat')}
-								className="px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 transition-colors"
-							>
-								Manage Seats
-							</button>
+							<h1 className="text-2xl font-bold text-gray-900">Manage Floor Plans</h1>
 						</div>
 					</div>
 				</div>
 			</nav>
 
 			<div className="max-w-7xl mx-auto p-6">
-				<div className="bg-white shadow rounded-lg overflow-hidden">
-					<div className="px-6 py-4 border-b border-gray-200">
-						<h2 className="text-xl font-semibold text-gray-900">{floorPlan.name}</h2>
-						{floorPlan.building && (
-							<p className="text-sm text-gray-500 mt-1">
-								{floorPlan.building} {floorPlan.floor && `- ${floorPlan.floor}`}
-							</p>
-						)}
-					</div>
-					<div className="p-6">
-						{floorPlan.image_url && (
-							<div className="flex justify-center relative" style={{ minHeight: '400px' }}>
-								<Image
-									src={floorPlan.image_url}
-									alt={floorPlan.name || 'Floor plan'}
-									width={floorPlan.image_width || 1200}
-									height={floorPlan.image_height || 800}
-									className="rounded-lg"
-									style={{
-										maxHeight: '600px',
-										objectFit: 'contain',
-										width: 'auto',
-										height: 'auto',
-									}}
-								/>
-							</div>
-						)}
+				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+					{/* Hardcoded to show only first result */}
+					<div className="bg-white shadow rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+						<div className="p-4">
+							<h2 className="text-lg font-semibold text-gray-900 mb-2">{floorPlan.name}</h2>
+							{floorPlan.building && (
+								<p className="text-sm text-gray-500 mb-4">
+									{floorPlan.building} {floorPlan.floor && `- ${floorPlan.floor}`}
+								</p>
+							)}
+							{floorPlan.image_url && (
+								<div className="relative mb-4" style={{ height: '200px' }}>
+									<Image
+										src={floorPlan.image_url}
+										alt={floorPlan.name || 'Floor plan'}
+										fill
+										className="rounded-lg object-cover"
+									/>
+								</div>
+							)}
+							<button
+								onClick={() => router.push(`/admin/manage-seat?floorPlanId=${floorPlan.id}`)}
+								className="w-full px-4 py-2 bg-blue-500 text-white text-sm font-medium rounded-md hover:bg-blue-600 transition-colors"
+								data-testid={`manage-seat-button-${floorPlan.id}`}
+							>
+								Manage Seats
+							</button>
+						</div>
 					</div>
 				</div>
 			</div>
