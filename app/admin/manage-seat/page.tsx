@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   FloorPlansService,
   OpenAPI,
@@ -55,15 +56,20 @@ interface PaginatedFloorPlanResponse {
 }
 
 export default function AdminManageSeatPage() {
+  const router = useRouter();
   const [floorPlan, setFloorPlan] = useState<FloorPlan | null>(null);
   const [isLoadingFloorPlan, setIsLoadingFloorPlan] = useState(true);
   const [seats, setSeats] = useState<Seat[]>([]);
+  const [initialSeats, setInitialSeats] = useState<Seat[]>([]); // Track initial state
   const [deletedResourceIds, setDeletedResourceIds] = useState<number[]>([]); // Track deleted resource IDs
   const [selectedSeat, setSelectedSeat] = useState<Seat | null>(null);
   const [editForm, setEditForm] = useState<SeatEditForm | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [openPickerId, setOpenPickerId] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
   const imageRef = useRef<HTMLDivElement>(null);
 
   // Load floor plan from API
@@ -113,6 +119,7 @@ export default function AdminManageSeatPage() {
               }));
 
             setSeats(loadedSeats);
+            setInitialSeats(loadedSeats);
           } catch (err) {
             console.error("Failed to load resources:", err);
             toast.error("Failed to load existing seats");
@@ -130,6 +137,59 @@ export default function AdminManageSeatPage() {
 
     loadFloorPlan();
   }, []);
+
+  // Track unsaved changes
+  useEffect(() => {
+    const hasChanges =
+      JSON.stringify(seats) !== JSON.stringify(initialSeats) ||
+      deletedResourceIds.length > 0;
+    setHasUnsavedChanges(hasChanges);
+  }, [seats, initialSeats, deletedResourceIds]);
+
+  // Prevent page navigation if there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = "";
+        return "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    
+    // Using router events via a workaround for Next.js 13+ app router
+    const originalPush = router.push;
+    const originalReplace = router.replace;
+    
+    router.push = function (...args: any[]) {
+      if (hasUnsavedChanges) {
+        const url = typeof args[0] === 'string' ? args[0] : args[0].pathname;
+        setPendingNavigation(url);
+        setShowLeaveConfirmation(true);
+        // Return a resolved promise to prevent errors
+        return Promise.resolve();
+      }
+      return originalPush.apply(this, args);
+    };
+
+    router.replace = function (...args: any[]) {
+      if (hasUnsavedChanges) {
+        const url = typeof args[0] === 'string' ? args[0] : args[0].pathname;
+        setPendingNavigation(url);
+        setShowLeaveConfirmation(true);
+        // Return a resolved promise to prevent errors
+        return Promise.resolve();
+      }
+      return originalReplace.apply(this, args);
+    };
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      router.push = originalPush;
+      router.replace = originalReplace;
+    };
+  }, [hasUnsavedChanges]);
 
   // Handle seat click to position a new seat
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -497,6 +557,9 @@ export default function AdminManageSeatPage() {
 
       // Clear deleted resource IDs after successful save
       setDeletedResourceIds([]);
+      
+      // Reset initial seats to current state after successful save
+      setInitialSeats(seats);
 
       if (errorCount === 0) {
         toast.success(`Successfully saved ${successCount} changes!`);
@@ -519,8 +582,10 @@ export default function AdminManageSeatPage() {
       <div className="flex-1 ml-48 transition-all duration-300">
         <div className={styles.container}>
           <div className={styles.header}>
-            <h1>Manage Seats</h1>
-            <p>Configure seats on the floor plan</p>
+            <div className={styles.headerContent}>
+              <h1>Manage Seats</h1>
+              <p>Configure seats on the floor plan</p>
+            </div>
           </div>
 
           {isLoadingFloorPlan ? (
@@ -539,6 +604,30 @@ export default function AdminManageSeatPage() {
             </div>
           ) : (
             <div className={styles.mainContent}>
+              {floorPlan && (
+                <div className={styles.seatPlanHeader}>
+                  <button
+                    className={styles.backButton}
+                    onClick={() => {
+                      if (hasUnsavedChanges) {
+                        setPendingNavigation(null);
+                        setShowLeaveConfirmation(true);
+                      } else {
+                        router.back();
+                      }
+                    }}
+                  >
+                    ← Back
+                  </button>
+                  <button
+                    className={`${styles.saveSeatButton} ${!hasUnsavedChanges ? styles.disabled : ""}`}
+                    onClick={handleSaveAll}
+                    disabled={!hasUnsavedChanges || isSaving}
+                  >
+                    {isSaving ? "Saving..." : "Save All Changes"}
+                  </button>
+                </div>
+              )}
               <div className={styles.seatPlanSection}>
                 <h2>Seat Plan Editor - {floorPlan.name}</h2>
                 <p className={styles.instruction}>
@@ -576,12 +665,8 @@ export default function AdminManageSeatPage() {
 
           {/* Modal for editing seat */}
           {showForm && editForm && (
-            <div className={styles.modalOverlay} onClick={() => {
-              setShowForm(false);
-              setSelectedSeat(null);
-              setEditForm(null);
-            }}>
-              <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalOverlay}>
+              <div className={styles.modalContent}>
                 <form onSubmit={handleFormSubmit} className={styles.editForm}>
                     <div className={styles.formHeader}>
                       <h3>Edit Seat</h3>
@@ -805,15 +890,44 @@ export default function AdminManageSeatPage() {
               </div>
             )}
 
-          {floorPlan && (
-            <div className={styles.actionBar}>
-              <button
-                className={styles.saveSeatButton}
-                onClick={handleSaveAll}
-                disabled={isSaving}
-              >
-                {isSaving ? "Saving..." : "Save All Seats"}
-              </button>
+          {showLeaveConfirmation && (
+            <div className={styles.confirmationModal}>
+              <div className={styles.confirmationContent}>
+                <h3>Unsaved Changes</h3>
+                <p>Your changes have not been saved. Are you sure you want to leave?</p>
+                <div className={styles.confirmationActions}>
+                  <button
+                    className={styles.confirmButton}
+                    onClick={() => {
+                      setShowLeaveConfirmation(false);
+                      setPendingNavigation(null);
+                      setHasUnsavedChanges(false);
+                      if (pendingNavigation) {
+                        // Handle both internal routes and external URLs
+                        if (pendingNavigation.startsWith('http')) {
+                          window.location.href = pendingNavigation;
+                        } else {
+                          router.push(pendingNavigation);
+                        }
+                      } else {
+                        // If no pending navigation, user is closing browser
+                        window.close();
+                      }
+                    }}
+                  >
+                    Leave Without Saving
+                  </button>
+                  <button
+                    className={styles.cancelConfirmButton}
+                    onClick={() => {
+                      setShowLeaveConfirmation(false);
+                      setPendingNavigation(null);
+                    }}
+                  >
+                    Stay
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
