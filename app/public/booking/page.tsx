@@ -58,7 +58,7 @@ export default function BookingPage() {
 	const [holdBookingId, setHoldBookingId] = useState<number | null>(null);
 	const [holdExpiresAt, setHoldExpiresAt] = useState<Date | null>(null);
 	const [timeRemaining, setTimeRemaining] = useState<string>("");
-	const [bookingName, setBookingName] = useState("");
+	const [bookingName, setBookingName] = useState("John Doe"); // Default user name (user_id = 1)
 	const [isRecurring, setIsRecurring] = useState(false);
 	const [recurringPattern, setRecurringPattern] = useState<"WEEKLY" | "MONTHLY">("WEEKLY");
 	const [recurringEndDate, setRecurringEndDate] = useState(() => {
@@ -227,6 +227,7 @@ export default function BookingPage() {
 		// Create hold booking
 		try {
 			setIsLoading(true);
+			// Backend expects datetime in local timezone format (without Z suffix)
 			const startTimeStr = `${selectedDate}T${timeslot.start_time}:00`;
 			const endTimeStr = `${selectedDate}T${timeslot.end_time}:00`;
 
@@ -315,7 +316,7 @@ export default function BookingPage() {
 			setSelectedTimeslot(null);
 			setHoldBookingId(null);
 			setHoldExpiresAt(null);
-			setBookingName("");
+			setBookingName("John Doe"); // Reset to default user
 			setIsRecurring(false);
 			
 			// Refresh floor plan and timeslots
@@ -346,7 +347,7 @@ export default function BookingPage() {
 		setSelectedTimeslot(null);
 		setHoldBookingId(null);
 		setHoldExpiresAt(null);
-		setBookingName("");
+		setBookingName("John Doe"); // Reset to default user
 		setIsRecurring(false);
 		setError(null);
 	};
@@ -725,9 +726,8 @@ export default function BookingPage() {
 										id="booking-name"
 										type="text"
 										value={bookingName}
-										onChange={(e) => setBookingName(e.target.value)}
-										placeholder="Enter your name"
-										className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+										readOnly
+										className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-50 text-gray-900 cursor-not-allowed"
 										required
 									/>
 								</div>

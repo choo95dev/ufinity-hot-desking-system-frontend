@@ -5,7 +5,7 @@ import { getAuthToken } from "@/utils/auth";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import DatePickerInput from "../../components/DatePickerInput";
-import { formatDateYmd } from "../../lib/utils/date";
+import { formatDateYmd, formatTime, formatDate } from "../../lib/utils/date";
 
 interface Booking {
 	id: number;
@@ -291,8 +291,6 @@ export default function PublicViewBookingPage() {
 								</tr>
 							) : (
 								filteredBookings.map((booking) => {
-									const startDate = new Date(booking.start_time);
-									const endDate = new Date(booking.end_time);
 									return (
 										<tr key={booking.id} data-testid={`view-booking-row-${booking.id}`} id={`view-booking-row-${booking.id}`}>
 											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
@@ -301,16 +299,16 @@ export default function PublicViewBookingPage() {
 												</span>
 											</td>
 											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
-												{startDate.toLocaleDateString()}
+												{formatDate(booking.start_time)}
 											</td>
 											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
-												{startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+												{formatTime(booking.start_time)}
 											</td>
 											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
-												{endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+												{formatTime(booking.end_time)}
 											</td>
 											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
-												{new Date(booking.created_at).toLocaleString()}
+												{formatDate(booking.created_at)} {formatTime(booking.created_at)}
 											</td>
 											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
 												<button
@@ -345,7 +343,7 @@ export default function PublicViewBookingPage() {
 						</div>
 						<div className="px-6 py-4">
 							<p className="text-sm text-gray-600">
-								Are you sure you want to cancel the booking for <span className="font-semibold">{cancelBooking.resource?.name || `Seat ${cancelBooking.resource_id}`}</span> on <span className="font-semibold">{new Date(cancelBooking.start_time).toLocaleDateString()}</span>?
+								Are you sure you want to cancel the booking for <span className="font-semibold">{cancelBooking.resource?.name || `Seat ${cancelBooking.resource_id}`}</span> on <span className="font-semibold">{formatDate(cancelBooking.start_time)}</span> at <span className="font-semibold">{formatTime(cancelBooking.start_time)}</span>?
 							</p>
 						</div>
 						<div className="flex justify-end gap-3 border-t px-6 py-4">
