@@ -42,7 +42,7 @@ export default function LoginPage() {
 
 		try {
 			// Configure API base URL
-			OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+			OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 			// Call user login API
 			const response = await AuthenticationService.postApiAuthUserLogin({

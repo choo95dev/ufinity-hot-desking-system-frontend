@@ -72,7 +72,7 @@ export default function AdminManageSeatPage() {
       setIsLoadingFloorPlan(true);
       try {
         OpenAPI.BASE =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
         const token = getAuthToken();
         if (token) {
@@ -404,7 +404,7 @@ export default function AdminManageSeatPage() {
     setIsSaving(true);
     try {
       OpenAPI.BASE =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
       const token = getAuthToken();
       if (token) {
         OpenAPI.TOKEN = token;

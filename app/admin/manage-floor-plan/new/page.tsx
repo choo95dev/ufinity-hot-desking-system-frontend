@@ -51,7 +51,7 @@ export default function NewFloorPlanPage() {
 
 	const onSubmit = async (data: FloorPlanFormData) => {
 		try {
-			OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+			OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 			const token = getAuthToken();
 			if (token) {
 				OpenAPI.TOKEN = token;

@@ -17,7 +17,7 @@ export default function ManageFloorPlanPage() {
 		setIsLoading(true);
 		try {
 			// Configure API base URL
-			OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+			OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 			
 			// Set token from auth utility
 			const token = getAuthToken();
