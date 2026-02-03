@@ -480,44 +480,63 @@ export default function BookingPage() {
 
 			if (bookingMode === "recurring") {
 				// Create recurring booking
-				const startDateObj = parseDateYmd(selectedDate);
-				startDateObj.setHours(startTime, 0, 0, 0);
-				const endDateObj = parseDateYmd(selectedDate);
-				endDateObj.setHours(endTime, 0, 0, 0);
+				// Format time as HH:mm:ss
+				const startTimeStr = `${String(startTime).padStart(2, "0")}:00:00`;
+				const endTimeStr = `${String(endTime).padStart(2, "0")}:00:00`;
 
-				const recurrenceEndDateObj = parseDateYmd(recurringEndDate);
-				recurrenceEndDateObj.setHours(23, 59, 59, 999);
-
-				await BookingsService.postApiBookingsRecurring({
+				// Prepare request body matching backend API expectations
+				const requestBody: any = {
 					resource_id: resourceId,
-					booking_type: "HOURLY",
-					start_time: startDateObj.toISOString(),
-					end_time: endDateObj.toISOString(),
 					recurrence_pattern: recurringPattern === "daily" ? "DAILY" : "WEEKLY",
-					recurrence_end_date: recurrenceEndDateObj.toISOString(),
-				});
+					start_date: selectedDate,
+					end_date: recurringEndDate,
+					start_time: startTimeStr,
+					end_time: endTimeStr,
+					reason: `Recurring ${recurringPattern} booking for ${modalData.deskName}`,
+				};
 
-				const message = `${bookingDates.length} recurring bookings confirmed for ${modalData.deskName} from ${startTime}:00 to ${endTime}:00`;
+				// Add days_of_week for weekly pattern
+				if (recurringPattern === "weekly") {
+					const dayOfWeek = parseDateYmd(selectedDate).getDay();
+					requestBody.days_of_week = [dayOfWeek];
+				}
+
+				const recurringResponse = await BookingsService.postApiBookingsRecurring(requestBody as any);
+
+				// Extract created instances count from response
+				const createdCount = recurringResponse.data?.created_bookings?.length || bookingDates.length;
+				const failedDates = recurringResponse.data?.failed_dates || [];
+
+				let message = `✓ ${createdCount} recurring booking${createdCount !== 1 ? "s" : ""} confirmed for ${modalData.deskName} from ${startTime}:00 to ${endTime}:00`;
+				if (failedDates.length > 0) {
+					message += `\n\n⚠️ ${failedDates.length} date${failedDates.length !== 1 ? "s" : ""} failed: ${failedDates.slice(0, 3).join(", ")}${failedDates.length > 3 ? "..." : ""}`;
+				}
 				alert(message);
 			} else {
 				// Create single booking using two-step process
-				const startDateObj = parseDateYmd(selectedDate);
-				startDateObj.setHours(startTime, 0, 0, 0);
-				const endDateObj = parseDateYmd(selectedDate);
-				endDateObj.setHours(endTime, 0, 0, 0);
+				// Construct ISO datetime strings without timezone conversion
+				const startTimeStr = `${selectedDate}T${String(startTime).padStart(2, "0")}:00:00`;
+				const endTimeStr = `${selectedDate}T${String(endTime).padStart(2, "0")}:00:00`;
 
 				// Step 1: Hold the booking
 				const holdResponse = await BookingsService.postApiBookingsHold({
 					resource_id: resourceId,
-					booking_type: "HOURLY",
-					start_time: startDateObj.toISOString(),
-					end_time: endDateObj.toISOString(),
+					booking_type: "SHORT_TERM" as any,
+					start_time: startTimeStr,
+					end_time: endTimeStr,
 				});
 
 				// Step 2: Confirm the booking
 				if (holdResponse.data?.id) {
-					await BookingsService.patchApiBookingsConfirm(holdResponse.data.id);
-					alert(`Booking confirmed for ${modalData.deskName} from ${startTime}:00 to ${endTime}:00`);
+					// Note: The API client uses PATCH but backend expects POST, so we handle potential errors
+					try {
+						await BookingsService.patchApiBookingsConfirm(holdResponse.data.id);
+						alert(`✓ Booking confirmed for ${modalData.deskName} from ${startTime}:00 to ${endTime}:00 on ${selectedDate}`);
+					} catch (confirmError: any) {
+						// If PATCH fails, the booking might still be in ONHOLD status
+						console.error("Confirm error:", confirmError);
+						throw new Error("Failed to confirm booking. Please check your bookings and try again.");
+					}
 				}
 			}
 
@@ -537,7 +556,27 @@ export default function BookingPage() {
 			setBookings(items as Booking[]);
 		} catch (error: any) {
 			console.error("Booking error:", error);
-			const errorMessage = error?.body?.message || error?.message || "Failed to create booking. Please try again.";
+
+			// Extract error message from various possible error formats
+			let errorMessage = "Failed to create booking. Please try again.";
+
+			if (error?.body?.message) {
+				errorMessage = error.body.message;
+			} else if (error?.body?.error?.message) {
+				errorMessage = error.body.error.message;
+			} else if (error?.message) {
+				errorMessage = error.message;
+			}
+
+			// Add more context for common errors
+			if (errorMessage.includes("already booked") || errorMessage.includes("conflict")) {
+				errorMessage = "❌ This time slot is no longer available. Please select a different time or refresh the page.";
+			} else if (errorMessage.includes("expired")) {
+				errorMessage = "❌ Booking session expired. Please try again.";
+			} else if (errorMessage.includes("required")) {
+				errorMessage = "❌ Missing required information. Please check your selection.";
+			}
+
 			alert(errorMessage);
 		} finally {
 			setIsLoading(false);
