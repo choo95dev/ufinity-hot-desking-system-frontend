@@ -2,12 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import LogoutButton from "./LogoutButton";
 
-export default function AdminSideNav() {
+interface AdminSideNavProps {
+	onNavigate?: (href: string) => boolean | void;
+}
+
+export default function AdminSideNav({ onNavigate }: AdminSideNavProps) {
 	const [isCollapsed, setIsCollapsed] = useState(false);
 	const pathname = usePathname();
+	const router = useRouter();
 
 	const navItems = [
 		{ name: "Bookings", href: "/admin/view-booking", icon: "📋" },
@@ -40,10 +45,22 @@ export default function AdminSideNav() {
 					<ul className="space-y-2 px-2">
 						{navItems.map((item) => {
 							const isActive = pathname === item.href;
+							
+							const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+								if (onNavigate) {
+									e.preventDefault();
+									const shouldNavigate = onNavigate(item.href);
+									if (shouldNavigate !== false) {
+										router.push(item.href);
+									}
+								}
+							};
+							
 							return (
 								<li key={item.href}>
 									<Link
 										href={item.href}
+										onClick={handleClick}
 										className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
 											isActive
 												? "bg-blue-500 text-white"

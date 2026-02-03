@@ -28,7 +28,7 @@ export default function LogoutButton({ className = '' }: { className?: string })
 	return (
 		<button
 			onClick={handleLogout}
-			className={`w-full px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-md hover:bg-red-600 transition-colors ${className}`}
+			className={`w-full px-4 py-2 border-2 border-blue-500 text-blue-500 text-sm font-medium rounded-md hover:bg-blue-50 transition-colors ${className}`}
 			data-logout-trigger
 		>
 			Logout

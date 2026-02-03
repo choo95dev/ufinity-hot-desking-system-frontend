@@ -60,16 +60,10 @@ export default function AdminManageSeatPage() {
   const [floorPlan, setFloorPlan] = useState<FloorPlan | null>(null);
   const [isLoadingFloorPlan, setIsLoadingFloorPlan] = useState(true);
   const [seats, setSeats] = useState<Seat[]>([]);
-  const [initialSeats, setInitialSeats] = useState<Seat[]>([]); // Track initial state
-  const [deletedResourceIds, setDeletedResourceIds] = useState<number[]>([]); // Track deleted resource IDs
   const [selectedSeat, setSelectedSeat] = useState<Seat | null>(null);
   const [editForm, setEditForm] = useState<SeatEditForm | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [openPickerId, setOpenPickerId] = useState<string | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
-  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
   const imageRef = useRef<HTMLDivElement>(null);
 
   // Load floor plan from API
@@ -119,7 +113,6 @@ export default function AdminManageSeatPage() {
               }));
 
             setSeats(loadedSeats);
-            setInitialSeats(loadedSeats);
           } catch (err) {
             console.error("Failed to load resources:", err);
             toast.error("Failed to load existing seats");
@@ -137,59 +130,6 @@ export default function AdminManageSeatPage() {
 
     loadFloorPlan();
   }, []);
-
-  // Track unsaved changes
-  useEffect(() => {
-    const hasChanges =
-      JSON.stringify(seats) !== JSON.stringify(initialSeats) ||
-      deletedResourceIds.length > 0;
-    setHasUnsavedChanges(hasChanges);
-  }, [seats, initialSeats, deletedResourceIds]);
-
-  // Prevent page navigation if there are unsaved changes
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedChanges) {
-        e.preventDefault();
-        e.returnValue = "";
-        return "";
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    
-    // Using router events via a workaround for Next.js 13+ app router
-    const originalPush = router.push;
-    const originalReplace = router.replace;
-    
-    router.push = function (...args: any[]) {
-      if (hasUnsavedChanges) {
-        const url = typeof args[0] === 'string' ? args[0] : args[0].pathname;
-        setPendingNavigation(url);
-        setShowLeaveConfirmation(true);
-        // Return a resolved promise to prevent errors
-        return Promise.resolve();
-      }
-      return originalPush.apply(this, args);
-    };
-
-    router.replace = function (...args: any[]) {
-      if (hasUnsavedChanges) {
-        const url = typeof args[0] === 'string' ? args[0] : args[0].pathname;
-        setPendingNavigation(url);
-        setShowLeaveConfirmation(true);
-        // Return a resolved promise to prevent errors
-        return Promise.resolve();
-      }
-      return originalReplace.apply(this, args);
-    };
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      router.push = originalPush;
-      router.replace = originalReplace;
-    };
-  }, [hasUnsavedChanges]);
 
   // Handle seat click to position a new seat
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -244,29 +184,100 @@ export default function AdminManageSeatPage() {
     }
   };
 
-  // Handle form submission
-  const handleFormSubmit = (e: FormEvent<HTMLFormElement>) => {
+  // Handle form submission - Save to API immediately
+  const handleFormSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!editForm) return;
+    if (!editForm || !floorPlan) return;
+    try {
+      OpenAPI.BASE =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+      const token = getAuthToken();
+      if (token) {
+        OpenAPI.TOKEN = token;
+      }
 
-    setSeats(
-      seats.map((seat) =>
-        seat.id === editForm.seatId
-          ? {
-              ...seat,
-              number: editForm.number,
-              dateRanges: editForm.dateRanges || [],
-              description: editForm.description,
-              blocked: editForm.blocked,
-              type: editForm.type,
-            }
-          : seat,
-      ),
-    );
+      const updatedSeat = seats.find((seat) => seat.id === editForm.seatId);
+      if (!updatedSeat) return;
 
-    setShowForm(false);
-    setSelectedSeat(null);
-    setEditForm(null);
+      if (updatedSeat.resourceId) {
+        // Update existing resource
+        await ResourcesService.putApiResources(updatedSeat.resourceId, {
+          name: editForm.number,
+          description: editForm.description || "",
+          type: editForm.type,
+          capacity: editForm.type === "TEAM" ? 4 : 1,
+          floor: floorPlan.floor || "",
+          building: floorPlan.building || "",
+          time_slot_granularity: 60,
+        });
+
+        // Update position
+        await ResourcesService.patchApiResourcesPosition(updatedSeat.resourceId, {
+          floor_plan_id: floorPlan.id!,
+          position_x: Number(updatedSeat.x),
+          position_y: Number(updatedSeat.y),
+        });
+
+        // Create/update operating hours if date ranges are specified
+        if (editForm.dateRanges && editForm.dateRanges.length > 0) {
+          await createOperatingHours(updatedSeat.resourceId, editForm.dateRanges);
+        }
+      } else {
+        // Create new resource
+        const resourceResponse = await ResourcesService.postApiResources({
+          name: editForm.number,
+          description: editForm.description || "",
+          type: editForm.type,
+          capacity: editForm.type === "TEAM" ? 4 : 1,
+          floor: floorPlan.floor || "",
+          building: floorPlan.building || "",
+          time_slot_granularity: 15,
+        });
+
+        const resourceId = resourceResponse.data?.id;
+
+        if (resourceId) {
+          // Update resource position on floor plan
+          await ResourcesService.patchApiResourcesPosition(resourceId, {
+            floor_plan_id: floorPlan.id!,
+            position_x: Number(updatedSeat.x),
+            position_y: Number(updatedSeat.y),
+          });
+
+          // Update seat with resourceId
+          updatedSeat.resourceId = resourceId;
+
+          // Create operating hours if date ranges are specified
+          if (editForm.dateRanges && editForm.dateRanges.length > 0) {
+            await createOperatingHours(resourceId, editForm.dateRanges);
+          }
+        }
+      }
+
+      // Update local state with the saved seat data
+      setSeats(
+        seats.map((seat) =>
+          seat.id === editForm.seatId
+            ? {
+                ...seat,
+                number: editForm.number,
+                dateRanges: editForm.dateRanges || [],
+                description: editForm.description,
+                blocked: editForm.blocked,
+                type: editForm.type,
+              }
+            : seat,
+        ),
+      );
+
+      toast.success("Seat saved successfully!");
+      setShowForm(false);
+      setSelectedSeat(null);
+      setEditForm(null);
+    } catch (err) {
+      console.error("Failed to save seat:", err);
+      toast.error("Failed to save seat");
+    }
   };
 
   // Handle form input changes
@@ -368,37 +379,33 @@ export default function AdminManageSeatPage() {
     handleFormChange("dateRanges", updatedRanges);
   };
 
-  // Check if there are unsaved changes
-  const hasChanges = () => {
-    if (!editForm || !selectedSeat) return false;
-
-    const dateRangesEqual =
-      JSON.stringify(editForm.dateRanges) ===
-      JSON.stringify(selectedSeat.dateRanges);
-
-    return (
-      editForm.number !== selectedSeat.number ||
-      !dateRangesEqual ||
-      editForm.description !== selectedSeat.description ||
-      editForm.blocked !== selectedSeat.blocked
-    );
-  };
-
-  // Delete seat (local only, actual deletion happens on Save)
-  const handleDeleteSeat = () => {
+  // Delete seat from API
+  const handleDeleteSeat = async () => {
     if (!selectedSeat) return;
+    try {
+      OpenAPI.BASE =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+      const token = getAuthToken();
+      if (token) {
+        OpenAPI.TOKEN = token;
+      }
 
-    // Track the resourceId for deletion when Save is clicked
-    if (selectedSeat.resourceId) {
-      setDeletedResourceIds((prev) => [...prev, selectedSeat.resourceId!]);
+      // Delete the resource via API if it exists
+      if (selectedSeat.resourceId) {
+        await ResourcesService.deleteApiResources(selectedSeat.resourceId);
+      }
+
+      // Remove from local state
+      setSeats(seats.filter((seat) => seat.id !== selectedSeat.id));
+
+      toast.success("Seat deleted successfully!");
+      setShowForm(false);
+      setSelectedSeat(null);
+      setEditForm(null);
+    } catch (err) {
+      console.error("Failed to delete seat:", err);
+      toast.error("Failed to delete seat");
     }
-
-    // Remove from local state immediately
-    setSeats(seats.filter((seat) => seat.id !== selectedSeat.id));
-
-    setShowForm(false);
-    setSelectedSeat(null);
-    setEditForm(null);
   };
 
   // Toggle date/time picker
@@ -458,124 +465,6 @@ export default function AdminManageSeatPage() {
   };
 
   // Save all seats (batch create/update/delete resources via API)
-  const handleSaveAll = async () => {
-    if (!floorPlan) return;
-
-    setIsSaving(true);
-    try {
-      OpenAPI.BASE =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-      const token = getAuthToken();
-      if (token) {
-        OpenAPI.TOKEN = token;
-      }
-
-      let successCount = 0;
-      let errorCount = 0;
-
-      // 1. Delete removed seats
-      for (const resourceId of deletedResourceIds) {
-        try {
-          await ResourcesService.deleteApiResources(resourceId);
-          successCount++;
-        } catch (err) {
-          console.error(`Failed to delete resource ${resourceId}:`, err);
-          errorCount++;
-        }
-      }
-
-      if (seats.length === 0) {
-        return;
-      }
-
-      // 2. Create or update seats
-      for (const seat of seats) {
-        try {
-          if (seat.resourceId) {
-            // Update existing resource
-            await ResourcesService.putApiResources(seat.resourceId, {
-              name: seat.number,
-              description: seat.description || "",
-              type: seat.type,
-              capacity: seat.type === "TEAM" ? 4 : 1,
-              floor: floorPlan.floor || "",
-              building: floorPlan.building || "",
-              time_slot_granularity: 60,
-            });
-
-            // Update position
-            await ResourcesService.patchApiResourcesPosition(seat.resourceId, {
-              floor_plan_id: floorPlan.id!,
-              position_x: seat.x,
-              position_y: seat.y,
-            });
-
-            // Create operating hours if date ranges are specified
-            if (seat.dateRanges && seat.dateRanges.length > 0) {
-              await createOperatingHours(seat.resourceId, seat.dateRanges);
-            }
-          } else {
-            // Create new resource
-            const resourceResponse = await ResourcesService.postApiResources({
-              name: seat.number,
-              description: seat.description || "",
-              type: seat.type,
-              capacity: seat.type === "TEAM" ? 4 : 1,
-              floor: floorPlan.floor || "",
-              building: floorPlan.building || "",
-              time_slot_granularity: 15,
-            });
-
-            const resourceId = resourceResponse.data?.id;
-
-            if (resourceId) {
-              // Update resource position on floor plan
-              await ResourcesService.patchApiResourcesPosition(resourceId, {
-                floor_plan_id: floorPlan.id!,
-                position_x: seat.x,
-                position_y: seat.y,
-              });
-
-              // Update seat with resourceId
-              seat.resourceId = resourceId;
-
-              // Create operating hours if date ranges are specified
-              if (seat.dateRanges && seat.dateRanges.length > 0) {
-                await createOperatingHours(resourceId, seat.dateRanges);
-              }
-            }
-          }
-          successCount++;
-        } catch (err) {
-          console.error(
-            `Failed to save resource for seat ${seat.number}:`,
-            err,
-          );
-          errorCount++;
-        }
-      }
-
-      // Clear deleted resource IDs after successful save
-      setDeletedResourceIds([]);
-      
-      // Reset initial seats to current state after successful save
-      setInitialSeats(seats);
-
-      if (errorCount === 0) {
-        toast.success(`Successfully saved ${successCount} changes!`);
-      } else if (successCount > 0) {
-        toast.warning(`Saved ${successCount} changes, ${errorCount} failed`);
-      } else {
-        toast.error("Failed to save changes");
-      }
-    } catch (error) {
-      console.error("Error saving seat plan:", error);
-      toast.error("Failed to save seat plan");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-100 flex">
       <AdminSideNav />
@@ -608,23 +497,9 @@ export default function AdminManageSeatPage() {
                 <div className={styles.seatPlanHeader}>
                   <button
                     className={styles.backButton}
-                    onClick={() => {
-                      if (hasUnsavedChanges) {
-                        setPendingNavigation(null);
-                        setShowLeaveConfirmation(true);
-                      } else {
-                        router.back();
-                      }
-                    }}
+                    onClick={() => router.back()}
                   >
                     ← Back
-                  </button>
-                  <button
-                    className={`${styles.saveSeatButton} ${!hasUnsavedChanges ? styles.disabled : ""}`}
-                    onClick={handleSaveAll}
-                    disabled={!hasUnsavedChanges || isSaving}
-                  >
-                    {isSaving ? "Saving..." : "Save All Changes"}
                   </button>
                 </div>
               )}
@@ -889,47 +764,6 @@ export default function AdminManageSeatPage() {
                 </div>
               </div>
             )}
-
-          {showLeaveConfirmation && (
-            <div className={styles.confirmationModal}>
-              <div className={styles.confirmationContent}>
-                <h3>Unsaved Changes</h3>
-                <p>Your changes have not been saved. Are you sure you want to leave?</p>
-                <div className={styles.confirmationActions}>
-                  <button
-                    className={styles.confirmButton}
-                    onClick={() => {
-                      setShowLeaveConfirmation(false);
-                      setPendingNavigation(null);
-                      setHasUnsavedChanges(false);
-                      if (pendingNavigation) {
-                        // Handle both internal routes and external URLs
-                        if (pendingNavigation.startsWith('http')) {
-                          window.location.href = pendingNavigation;
-                        } else {
-                          router.push(pendingNavigation);
-                        }
-                      } else {
-                        // If no pending navigation, user is closing browser
-                        window.close();
-                      }
-                    }}
-                  >
-                    Leave Without Saving
-                  </button>
-                  <button
-                    className={styles.cancelConfirmButton}
-                    onClick={() => {
-                      setShowLeaveConfirmation(false);
-                      setPendingNavigation(null);
-                    }}
-                  >
-                    Stay
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>
