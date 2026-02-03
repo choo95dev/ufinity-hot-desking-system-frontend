@@ -60,7 +60,7 @@ export default function BookingPage() {
 	const [timeRemaining, setTimeRemaining] = useState<string>("");
 	const [bookingName, setBookingName] = useState("");
 	const [isRecurring, setIsRecurring] = useState(false);
-	const [recurringPattern, setRecurringPattern] = useState<"DAILY" | "WEEKLY">("DAILY");
+	const [recurringPattern, setRecurringPattern] = useState<"WEEKLY" | "MONTHLY">("WEEKLY");
 	const [recurringEndDate, setRecurringEndDate] = useState(() => {
 		const endDate = new Date();
 		endDate.setDate(endDate.getDate() + 7);
@@ -277,10 +277,13 @@ export default function BookingPage() {
 						reason: bookingName,
 					};
 
-					// Add days_of_week for WEEKLY pattern
+					// Add days_of_week for WEEKLY pattern or day_of_month for MONTHLY
 					if (recurringPattern === "WEEKLY") {
 						const dayOfWeek = parseDateYmd(selectedDate).getDay();
 						requestBody.days_of_week = [dayOfWeek];
+					} else if (recurringPattern === "MONTHLY") {
+						const dayOfMonth = parseDateYmd(selectedDate).getDate();
+						requestBody.day_of_month = dayOfMonth;
 					}
 
 					// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -750,26 +753,26 @@ export default function BookingPage() {
 														<input
 															type="radio"
 															name="recurring-pattern"
-															value="DAILY"
-															checked={recurringPattern === "DAILY"}
-															onChange={(e) => setRecurringPattern(e.target.value as "DAILY" | "WEEKLY")}
+															value="WEEKLY"
+															checked={recurringPattern === "WEEKLY"}
+															onChange={(e) => setRecurringPattern(e.target.value as "WEEKLY" | "MONTHLY")}
 															className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
 														/>
 														<span className="text-sm text-gray-700">
-															Daily (every weekday)
+															Weekly (same day each week - {parseDateYmd(selectedDate).toLocaleDateString("en-US", { weekday: "long" })})
 														</span>
 													</label>
 													<label className="flex items-center gap-2 cursor-pointer">
 														<input
 															type="radio"
 															name="recurring-pattern"
-															value="WEEKLY"
-															checked={recurringPattern === "WEEKLY"}
-															onChange={(e) => setRecurringPattern(e.target.value as "DAILY" | "WEEKLY")}
+															value="MONTHLY"
+															checked={recurringPattern === "MONTHLY"}
+															onChange={(e) => setRecurringPattern(e.target.value as "WEEKLY" | "MONTHLY")}
 															className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
 														/>
 														<span className="text-sm text-gray-700">
-															Weekly (same day each week - {parseDateYmd(selectedDate).toLocaleDateString("en-US", { weekday: "long" })})
+															Monthly (same day of month - day {parseDateYmd(selectedDate).getDate()})
 														</span>
 													</label>
 												</div>
