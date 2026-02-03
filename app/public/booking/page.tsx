@@ -785,27 +785,39 @@ export default function BookingPage() {
 													if (desk.position_x === null || desk.position_x === undefined || desk.position_y === null || desk.position_y === undefined) {
 														return null;
 													}
+													const isHovered = hoveredDesk === desk.id;
 													return (
 														<div
 															key={desk.id}
-															className="absolute"
+															className="absolute flex items-center justify-center"
 															style={{
 																left: `${desk.position_x}px`,
 																top: `${desk.position_y}px`,
 																transform: "translate(-50%, -50%)",
 															}}
 														>
+															{!isHovered && desk.status !== "booked" && desk.status !== "unavailable" && (
+																<div
+																	className="absolute rounded-full animate-ping opacity-75"
+																	style={{
+																		width: "20px",
+																		height: "20px",
+																		backgroundColor: desk.status === "available" ? "rgb(134, 239, 172)" : "rgb(253, 224, 71)",
+																	}}
+																></div>
+															)}
 															<button
 																onClick={() => handleDeskClick(desk)}
 																onMouseEnter={() => setHoveredDesk(desk.id)}
 																onMouseLeave={() => setHoveredDesk(null)}
 																data-testid={`desk-${desk.id}`}
 																data-status={desk.status}
-																className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 shadow-lg hover:shadow-xl ${getDeskColor(desk)}`}
+																className={`relative z-10 ${
+																	isHovered ? "px-3 py-2 rounded-lg text-xs font-semibold min-w-[60px]" : "w-3 h-3 rounded-full"
+																} transition-all duration-200 shadow-lg hover:shadow-xl ${getDeskColor(desk)}`}
 																disabled={desk.status === "booked" || desk.status === "unavailable"}
-																style={{ minWidth: "60px" }}
 															>
-																{desk.name}
+																{isHovered ? desk.name : ""}
 															</button>
 
 															{hoveredDesk === desk.id && desk.status !== "booked" && desk.status !== "unavailable" && (
@@ -827,39 +839,6 @@ export default function BookingPage() {
 										<p className="text-slate-600 font-medium mb-2">No floor plan image available</p>
 										<p className="text-sm text-slate-500">Viewing desk list below</p>
 									</div>
-								)}
-
-								{/* Show desks without positions in a grid below */}
-								{desks.some((desk) => desk.position_x === null || desk.position_x === undefined) && (
-									<>
-										<h3 className="text-lg font-semibold text-gray-800 mb-4">Desks Without Position</h3>
-										<div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8" data-testid="desk-grid">
-											{desks
-												.filter((desk) => desk.position_x === null || desk.position_x === undefined)
-												.map((desk) => (
-													<div key={desk.id} className="relative group">
-														<button
-															onClick={() => handleDeskClick(desk)}
-															onMouseEnter={() => setHoveredDesk(desk.id)}
-															onMouseLeave={() => setHoveredDesk(null)}
-															data-testid={`desk-${desk.id}`}
-															data-status={desk.status}
-															className={`w-full h-24 rounded-lg font-semibold transition-colors duration-200 ${getDeskColor(desk)}`}
-															disabled={desk.status === "booked" || desk.status === "unavailable"}
-														>
-															{desk.name}
-														</button>
-
-														{hoveredDesk === desk.id && desk.status !== "booked" && desk.status !== "unavailable" && (
-															<div className="absolute z-10 bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded py-3 px-4 min-w-[200px]">
-																{renderTimelineTooltip(desk)}
-																<div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-															</div>
-														)}
-													</div>
-												))}
-										</div>
-									</>
 								)}
 							</div>
 						</>
