@@ -97,20 +97,54 @@ export default function AdminManageSeatPage() {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const resources = (resourcesResponse.data || []) as Array<any>;
 
-            // Convert resources to seats
-            const loadedSeats: Seat[] = resources
-              .filter((r) => r.position_x != null && r.position_y != null)
-              .map((resource) => ({
-                id: `seat-${resource.id}`,
-                resourceId: resource.id, // Store the actual resource ID
-                number: resource.name || "",
-                x: resource.position_x,
-                y: resource.position_y,
-                dateRanges: [], // Operating hours will be loaded separately if needed
-                description: resource.description || "",
-                blocked: !resource.is_active,
-                type: (resource.type || "SOLO") as "SOLO" | "TEAM",
-              }));
+            // Convert resources to seats and load operating hours
+            const loadedSeats: Seat[] = await Promise.all(
+              resources
+                .filter((r) => r.position_x != null && r.position_y != null)
+                .map(async (resource) => {
+                  // Load operating hours for each resource
+                  let dateRanges: DateRange[] = [];
+                  try {
+                    const hoursResponse =
+                      await ResourcesService.getApiResourcesOperatingHours(
+                        resource.id,
+                      );
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const operatingHours = (hoursResponse.data || []) as Array<any>;
+
+                    // Group operating hours by date and convert to DateRange format
+                    const dateMap = new Map<string, { start: string; end: string; startTime: string; endTime: string }[]>();
+                    operatingHours.forEach((oh) => {
+                      if (!dateMap.has(oh.date)) {
+                        dateMap.set(oh.date, []);
+                      }
+                      dateMap.get(oh.date)!.push({
+                        start: oh.date,
+                        end: oh.date,
+                        startTime: oh.start_time,
+                        endTime: oh.end_time,
+                      });
+                    });
+
+                    // Convert to date ranges (for now, each date is its own range)
+                    dateRanges = Array.from(dateMap.values()).flat();
+                  } catch (err) {
+                    console.error(`Failed to load operating hours for resource ${resource.id}:`, err);
+                  }
+
+                  return {
+                    id: `seat-${resource.id}`,
+                    resourceId: resource.id, // Store the actual resource ID
+                    number: resource.name || "",
+                    x: resource.position_x,
+                    y: resource.position_y,
+                    dateRanges,
+                    description: resource.description || "",
+                    blocked: !resource.is_active,
+                    type: (resource.type || "SOLO") as "SOLO" | "TEAM",
+                  };
+                }),
+            );
 
             setSeats(loadedSeats);
           } catch (err) {
