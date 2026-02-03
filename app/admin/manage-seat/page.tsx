@@ -778,11 +778,9 @@ export default function AdminManageSeatPage() {
                     </div>
 
                     <div className={styles.formActions}>
-                      {hasChanges() && (
-                        <button type="submit" className={styles.saveButton}>
-                          Save
-                        </button>
-                      )}
+                      <button type="submit" className={styles.saveButton}>
+                        Save
+                      </button>
                       <button
                         type="button"
                         className={styles.deleteButton}
