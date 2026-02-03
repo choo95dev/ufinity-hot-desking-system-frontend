@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { BookingsService } from "@/src/api/services/BookingsService";
@@ -335,8 +336,25 @@ export default function BookingPage() {
 	};
 
 	return (
-		<div className="min-h-screen bg-gray-50 py-8 px-4">
-			<div className="max-w-7xl mx-auto">
+		<div className="min-h-screen bg-gray-50">
+			{/* Navigation Bar */}
+			<nav className="bg-white shadow">
+				<div className="max-w-6xl mx-auto px-4 py-4">
+					<div className="flex justify-between items-center">
+						<h1 className="text-2xl font-bold text-gray-900">
+							Book a Seat
+						</h1>
+						<Link
+							href="/public/view-booking"
+							className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+						>
+							My Bookings
+						</Link>
+					</div>
+				</div>
+			</nav>
+
+			<div className="max-w-7xl mx-auto py-8 px-4">
 				<div className="bg-white rounded-lg shadow-md p-8">
 					<h1 className="text-3xl font-extrabold text-gray-900 mb-6">Book a Desk</h1>
 

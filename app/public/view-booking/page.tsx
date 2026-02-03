@@ -1,17 +1,30 @@
 "use client";
 
-import { SetStateAction, useEffect, useState } from "react";
+import { BookingsService } from "@/src/api";
+import { getAuthToken } from "@/utils/auth";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import DatePickerInput from "../../components/DatePickerInput";
-import { extractDate, formatDateYmd } from "../../lib/utils/date";
+import { formatDateYmd } from "../../lib/utils/date";
 
 interface Booking {
-	id: string;
-	bookedSeat: string;
-	bookingDate: string;
-	bookingStartTime: string;
-	bookingEndTime: string;
-	createdAt: string;
+	id: number;
+	user_id: number;
+	resource_id: number;
+	booking_type: string;
+	start_time: string;
+	end_time: string;
+	status: string;
+	created_at: string;
+	updated_at: string;
+	resource?: {
+		id: number;
+		name: string;
+	};
+	user?: {
+		id: number;
+		name: string;
+	};
 }
 
 const PAGE_TITLE = "View Bookings";
@@ -19,52 +32,18 @@ const EMPTY_MESSAGE = "No bookings available.";
 const SEARCH_PLACEHOLDER = "Search by seat, date, or time";
 
 /**
- * Fetch booking records for the public view.
+ * Fetch booking records for the current user.
  * @returns Promise resolving to booking records.
  */
 const fetchPublicBookings = async (): Promise<Booking[]> => {
-	return [
-		{
-			id: "BK-1001",
-			bookedSeat: "A-01",
-			bookingDate: "2026-01-30",
-			bookingStartTime: "09:00 AM",
-			bookingEndTime: "06:00 PM",
-			createdAt: "2026-01-29 04:20 PM",
-		},
-		{
-			id: "BK-1002",
-			bookedSeat: "B-03",
-			bookingDate: "2026-01-31",
-			bookingStartTime: "10:00 AM",
-			bookingEndTime: "05:00 PM",
-			createdAt: "2026-01-30 01:15 PM",
-		},
-		{
-			id: "BK-1003",
-			bookedSeat: "C-02",
-			bookingDate: "2026-02-01",
-			bookingStartTime: "08:30 AM",
-			bookingEndTime: "04:30 PM",
-			createdAt: "2026-01-31 06:05 PM",
-		},
-		{
-			id: "BK-1004",
-			bookedSeat: "A-05",
-			bookingDate: "2026-02-01",
-			bookingStartTime: "09:30 AM",
-			bookingEndTime: "05:30 PM",
-			createdAt: "2026-01-31 09:10 AM",
-		},
-		{
-			id: "BK-1005",
-			bookedSeat: "B-01",
-			bookingDate: "2026-02-02",
-			bookingStartTime: "08:30 AM",
-			bookingEndTime: "04:30 PM",
-			createdAt: "2026-02-01 11:45 AM",
-		},
-	];
+	const token = await getAuthToken();
+	const response = await BookingsService.getApiBookings();
+	// API returns { statusCode, data: { items: [...], pagination: {...} } }
+	if (response.data && typeof response.data === 'object' && 'items' in response.data) {
+		const dataWithItems = response.data as { items?: Booking[] };
+		return dataWithItems.items || [];
+	}
+	return Array.isArray(response.data) ? response.data : [];
 };
 
 export default function PublicViewBookingPage() {
@@ -103,24 +82,33 @@ export default function PublicViewBookingPage() {
 
 		if (normalizedSearch) {
 			nextBookings = nextBookings.filter((booking) => {
-				const searchTarget = `${booking.bookedSeat} ${booking.bookingDate} ${booking.bookingStartTime} ${booking.bookingEndTime} ${booking.createdAt}`.toLowerCase();
+				const seatName = booking.resource?.name || "";
+				const userName = booking.user?.name || "";
+				const bookingDate = new Date(booking.start_time).toLocaleDateString();
+				const searchTarget = `${seatName} ${bookingDate} ${booking.start_time} ${booking.end_time} ${userName} ${booking.status}`.toLowerCase();
 				return searchTarget.includes(normalizedSearch);
 			});
 		}
 
 		if (startDate) {
 			const startValue = formatDateYmd(startDate);
-			nextBookings = nextBookings.filter((booking) => booking.bookingDate >= startValue);
+			nextBookings = nextBookings.filter((booking) => {
+				const bookingDate = formatDateYmd(new Date(booking.start_time));
+				return bookingDate >= startValue;
+			});
 		}
 
 		if (endDate) {
 			const endValue = formatDateYmd(endDate);
-			nextBookings = nextBookings.filter((booking) => booking.bookingDate <= endValue);
+			nextBookings = nextBookings.filter((booking) => {
+				const bookingDate = formatDateYmd(new Date(booking.start_time));
+				return bookingDate <= endValue;
+			});
 		}
 
 		nextBookings.sort((left, right) => {
-			const leftValue = new Date(`${left.bookingDate} ${left.bookingStartTime}`).getTime();
-			const rightValue = new Date(`${right.bookingDate} ${right.bookingStartTime}`).getTime();
+			const leftValue = new Date(left.start_time).getTime();
+			const rightValue = new Date(right.start_time).getTime();
 			if (sortOrder === "newest") {
 				return rightValue - leftValue;
 			}
@@ -137,8 +125,14 @@ export default function PublicViewBookingPage() {
 		setSortOrder("newest");
 	};
 
-	const handleCancelBooking = (bookingId: string) => {
-		setBookings((current) => current.filter((booking) => booking.id !== bookingId));
+	const handleCancelBooking = async (bookingId: number) => {
+		try {
+			await BookingsService.deleteApiBookings(bookingId);
+			setBookings((current) => current.filter((booking) => booking.id !== bookingId));
+		} catch (error) {
+			console.error("Failed to cancel booking:", error);
+			setErrorMessage("Failed to cancel booking. Please try again.");
+		}
 	};
 
 	const handleStartCancel = (booking: Booking) => {
@@ -296,27 +290,41 @@ export default function PublicViewBookingPage() {
 									</td>
 								</tr>
 							) : (
-								filteredBookings.map((booking) => (
-									<tr key={booking.id} data-testid={`view-booking-row-${booking.id}`} id={`view-booking-row-${booking.id}`}>
-										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
-											<span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">{booking.bookedSeat}</span>
-										</td>
-										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">{booking.bookingDate}</td>
-										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">{booking.bookingStartTime}</td>
-										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">{booking.bookingEndTime}</td>
-										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">{booking.createdAt}</td>
-										<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
-											<button
-												onClick={() => handleStartCancel(booking)}
-												className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 transition-colors"
-												data-testid={`view-booking-cancel-${booking.id}`}
-												id={`view-booking-cancel-${booking.id}`}
-											>
-												Cancel
-											</button>
-										</td>
-									</tr>
-								))
+								filteredBookings.map((booking) => {
+									const startDate = new Date(booking.start_time);
+									const endDate = new Date(booking.end_time);
+									return (
+										<tr key={booking.id} data-testid={`view-booking-row-${booking.id}`} id={`view-booking-row-${booking.id}`}>
+											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
+												<span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
+													{booking.resource?.name || `Seat ${booking.resource_id}`}
+												</span>
+											</td>
+											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
+												{startDate.toLocaleDateString()}
+											</td>
+											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
+												{startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+											</td>
+											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
+												{endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+											</td>
+											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
+												{new Date(booking.created_at).toLocaleString()}
+											</td>
+											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-600">
+												<button
+													onClick={() => handleStartCancel(booking)}
+													className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 transition-colors"
+													data-testid={`view-booking-cancel-${booking.id}`}
+													id={`view-booking-cancel-${booking.id}`}
+												>
+													Cancel
+												</button>
+											</td>
+										</tr>
+									);
+								})
 							)}
 						</tbody>
 					</table>
@@ -337,7 +345,7 @@ export default function PublicViewBookingPage() {
 						</div>
 						<div className="px-6 py-4">
 							<p className="text-sm text-gray-600">
-								Are you sure you want to cancel the booking for <span className="font-semibold">{cancelBooking.bookedSeat}</span>?
+								Are you sure you want to cancel the booking for <span className="font-semibold">{cancelBooking.resource?.name || `Seat ${cancelBooking.resource_id}`}</span> on <span className="font-semibold">{new Date(cancelBooking.start_time).toLocaleDateString()}</span>?
 							</p>
 						</div>
 						<div className="flex justify-end gap-3 border-t px-6 py-4">
