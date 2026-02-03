@@ -54,6 +54,17 @@ export default function BookingPage() {
 	const [showModal, setShowModal] = useState(false);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [holdBookingId, setHoldBookingId] = useState<number | null>(null);
+	const [holdExpiresAt, setHoldExpiresAt] = useState<Date | null>(null);
+	const [timeRemaining, setTimeRemaining] = useState<string>("");
+	const [bookingName, setBookingName] = useState("");
+	const [isRecurring, setIsRecurring] = useState(false);
+	const [recurringPattern, setRecurringPattern] = useState<"DAILY" | "WEEKLY">("DAILY");
+	const [recurringEndDate, setRecurringEndDate] = useState(() => {
+		const endDate = new Date();
+		endDate.setDate(endDate.getDate() + 7);
+		return formatDateYmd(endDate);
+	});
 
 	// Set authentication token on component mount
 	useEffect(() => {
@@ -171,6 +182,29 @@ export default function BookingPage() {
 		fetchTimeslots();
 	}, [selectedFloorPlan, selectedDate]);
 
+	// Countdown timer for hold expiry
+	useEffect(() => {
+		if (!holdExpiresAt) return;
+
+		const interval = setInterval(() => {
+			const now = new Date();
+			const diff = holdExpiresAt.getTime() - now.getTime();
+
+			if (diff <= 0) {
+				setTimeRemaining("Expired");
+				clearInterval(interval);
+				setError("Your booking hold has expired. Please try again.");
+				handleCancelBooking();
+			} else {
+				const minutes = Math.floor(diff / 60000);
+				const seconds = Math.floor((diff % 60000) / 1000);
+				setTimeRemaining(`${minutes}:${seconds.toString().padStart(2, "0")}`);
+			}
+		}, 1000);
+
+		return () => clearInterval(interval);
+	}, [holdExpiresAt]);
+
 	const handleResourceClick = (resource: ResourceWithTimeslots) => {
 		if (resource.availability === "disabled" || resource.availability === "unavailable") {
 			return;
@@ -181,25 +215,20 @@ export default function BookingPage() {
 		setShowModal(true);
 	};
 
-	const handleTimeslotSelect = (timeslot: TimeSlot) => {
-		if (timeslot.is_available) {
-			setSelectedTimeslot(timeslot);
-		}
-	};
-
-	const handleBooking = async () => {
-		if (!selectedResource || !selectedTimeslot) {
+	const handleTimeslotSelect = async (timeslot: TimeSlot) => {
+		if (!timeslot.is_available || !selectedResource) {
 			return;
 		}
 
+		setSelectedTimeslot(timeslot);
+		setError(null);
+		
+		// Create hold booking
 		try {
 			setIsLoading(true);
+			const startTimeStr = `${selectedDate}T${timeslot.start_time}:00`;
+			const endTimeStr = `${selectedDate}T${timeslot.end_time}:00`;
 
-			// Construct datetime strings for the booking
-			const startTimeStr = `${selectedDate}T${selectedTimeslot.start_time}:00`;
-			const endTimeStr = `${selectedDate}T${selectedTimeslot.end_time}:00`;
-
-			// Step 1: Hold the booking
 			const holdResponse = await BookingsService.postApiBookingsHold({
 				resource_id: selectedResource.id!,
 				// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -208,29 +237,101 @@ export default function BookingPage() {
 				end_time: endTimeStr,
 			});
 
-			// Step 2: Confirm the booking
 			if (holdResponse.data?.id) {
-				await BookingsService.patchApiBookingsConfirm(holdResponse.data.id);
-				alert(`Booking confirmed for ${selectedResource.name} from ${selectedTimeslot.start_time} to ${selectedTimeslot.end_time}`);
-				
-				// Refresh timeslots
-				setShowModal(false);
-				setSelectedResource(null);
-				setSelectedTimeslot(null);
-				
-				// Trigger refresh by updating date state
-				const currentDate = selectedDate;
-				setSelectedDate("");
-				setTimeout(() => setSelectedDate(currentDate), 0);
+				setHoldBookingId(holdResponse.data.id);
+				// Set expiry time (10 minutes from now)
+				const expiryTime = new Date(Date.now() + 10 * 60 * 1000);
+				setHoldExpiresAt(expiryTime);
 			}
 		} catch (err) {
-			console.error("Booking error:", err);
+			console.error("Failed to hold booking:", err);
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const errorMessage = (err as any)?.body?.message || "Failed to create booking";
-			alert(errorMessage);
+			const errorMessage = (err as any)?.body?.message || "Failed to hold the timeslot";
+			setError(errorMessage);
 		} finally {
 			setIsLoading(false);
 		}
+	};
+
+	const handleConfirmBooking = async () => {
+		if (!holdBookingId || !bookingName.trim()) {
+			setError("Please enter your name");
+			return;
+		}
+
+		try {
+			setIsLoading(true);
+			setError(null);
+
+			// Confirm the hold booking
+			await BookingsService.patchApiBookingsConfirm(holdBookingId);
+
+			// If recurring booking is requested, create recurring pattern
+			if (isRecurring && selectedResource && selectedTimeslot) {
+				try {
+					const requestBody = {
+						resource_id: selectedResource.id!,
+						recurrence_pattern: recurringPattern,
+						start_date: selectedDate,
+						end_date: recurringEndDate,
+						start_time: `${selectedTimeslot.start_time}:00`,
+						end_time: `${selectedTimeslot.end_time}:00`,
+						reason: `Recurring ${recurringPattern.toLowerCase()} booking for ${selectedResource.name}`,
+						...(recurringPattern === "WEEKLY" && {
+							days_of_week: [parseDateYmd(selectedDate).getDay()],
+						}),
+					};
+
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					await BookingsService.postApiBookingsRecurring(requestBody as any);
+				} catch (recurringErr) {
+					console.error("Failed to create recurring bookings:", recurringErr);
+					// Don't fail the whole process if recurring booking fails
+				}
+			}
+
+			// Success
+			alert(`Booking confirmed for ${selectedResource?.name}!${isRecurring ? " Recurring bookings have been created." : ""}`);
+			
+			// Reset modal state
+			setShowModal(false);
+			setSelectedTimeslot(null);
+			setHoldBookingId(null);
+			setHoldExpiresAt(null);
+			setBookingName("");
+			setIsRecurring(false);
+			
+			// Refresh floor plan and timeslots
+			if (selectedFloorPlanId) {
+				const response = await FloorPlansService.getApiFloorPlans1(selectedFloorPlanId);
+				setSelectedFloorPlan(response.data || null);
+			}
+			setSelectedResource(null);
+		} catch (err) {
+			console.error("Booking confirmation error:", err);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const errorMessage = (err as any)?.body?.message || "Failed to confirm booking";
+			setError(errorMessage);
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	const handleCancelBooking = async () => {
+		// Cancel the hold booking if it exists
+		if (holdBookingId) {
+			try {
+				await BookingsService.deleteApiBookings(holdBookingId);
+			} catch (err) {
+				console.error("Failed to cancel hold:", err);
+			}
+		}
+		setSelectedTimeslot(null);
+		setHoldBookingId(null);
+		setHoldExpiresAt(null);
+		setBookingName("");
+		setIsRecurring(false);
+		setError(null);
 	};
 
 	return (
@@ -463,76 +564,234 @@ export default function BookingPage() {
 			{showModal && selectedResource && (
 				<div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
 					<div className="bg-white rounded-lg p-8 max-w-2xl w-full mx-4 shadow-2xl max-h-[90vh] overflow-y-auto">
-						<h2 className="text-2xl font-bold text-gray-900 mb-4">Select Time Slot</h2>
-						
-						<div className="mb-6 pb-4 border-b border-gray-200">
-							<p className="text-gray-900 mb-2">
-								<strong>Resource:</strong> {selectedResource.name}
-							</p>
-							{selectedResource.description && (
-								<p className="text-sm text-gray-600">{selectedResource.description}</p>
-							)}
-							<p className="text-sm text-gray-600 mt-2">
-								<strong>Date:</strong> {selectedDate}
-							</p>
-						</div>
+						{!selectedTimeslot ? (
+							<>
+								{/* Timeslot Selection View */}
+								<h2 className="text-2xl font-bold text-gray-900 mb-4">Select Time Slot</h2>
+								
+								<div className="mb-6 pb-4 border-b border-gray-200">
+									<p className="text-gray-900 mb-2">
+										<strong>Resource:</strong> {selectedResource.name}
+									</p>
+									{selectedResource.description && (
+										<p className="text-sm text-gray-600">{selectedResource.description}</p>
+									)}
+									<p className="text-sm text-gray-600 mt-2">
+										<strong>Date:</strong> {selectedDate}
+									</p>
+								</div>
 
-						<div className="mb-6">
-							<h3 className="text-lg font-semibold text-gray-900 mb-3">Available Time Slots</h3>
-							<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-								{selectedResource.timeslots.map((timeslot, index) => (
-									<button
-										key={index}
-										onClick={() => handleTimeslotSelect(timeslot)}
-										disabled={!timeslot.is_available}
-										className={`p-4 rounded-lg border-2 transition-all ${
-											timeslot.is_available
-												? selectedTimeslot === timeslot
-													? "border-blue-600 bg-blue-100"
-													: "border-green-500 bg-green-50 hover:bg-green-100"
-												: "border-red-300 bg-red-50 cursor-not-allowed opacity-60"
-										}`}
-									>
-										<div className="font-semibold text-gray-900">
-											{timeslot.start_time} - {timeslot.end_time}
-										</div>
-										{!timeslot.is_available && timeslot.booking && (
-											<div className="mt-2 text-xs text-gray-600">
-												<p>Booked by: {timeslot.booking.user_name}</p>
-												<p>Status: {timeslot.booking.status}</p>
+								<div className="mb-6">
+									<h3 className="text-lg font-semibold text-gray-900 mb-3">Available Time Slots</h3>
+									<p className="text-sm text-gray-600 mb-4">Click on an available timeslot to proceed with booking</p>
+									<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+										{selectedResource.timeslots.map((timeslot, index) => (
+											<button
+												key={index}
+												onClick={() => handleTimeslotSelect(timeslot)}
+												disabled={!timeslot.is_available || isLoading}
+												className={`p-4 rounded-lg border-2 transition-all ${
+													timeslot.is_available
+														? "border-green-500 bg-green-50 hover:bg-green-100 cursor-pointer"
+														: "border-red-300 bg-red-50 cursor-not-allowed opacity-60"
+												}`}
+											>
+												<div className="font-semibold text-gray-900">
+													{timeslot.start_time} - {timeslot.end_time}
+												</div>
+												{!timeslot.is_available && timeslot.booking && (
+													<div className="mt-2 text-xs text-gray-600">
+														<p>Booked by: {timeslot.booking.user_name}</p>
+														<p>Status: {timeslot.booking.status}</p>
+													</div>
+												)}
+												{timeslot.is_available && (
+													<div className="mt-1 text-xs text-green-600">Click to book</div>
+												)}
+											</button>
+										))}
+									</div>
+									{selectedResource.timeslots.length === 0 && (
+										<p className="text-gray-600 text-center py-4">No timeslots available for this date</p>
+									)}
+									{isLoading && (
+										<div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+											<div className="flex items-center gap-3">
+												<div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+												<span className="text-blue-800">Holding timeslot...</span>
 											</div>
-										)}
-										{timeslot.is_available && (
-											<div className="mt-1 text-xs text-green-600">Available</div>
-										)}
-									</button>
-								))}
-							</div>
-							{selectedResource.timeslots.length === 0 && (
-								<p className="text-gray-600 text-center py-4">No timeslots available for this date</p>
-							)}
-						</div>
+										</div>
+									)}
+								</div>
 
-						<div className="flex gap-4">
-							<button
-								onClick={() => {
-									setShowModal(false);
-									setSelectedResource(null);
-									setSelectedTimeslot(null);
-								}}
-								disabled={isLoading}
-								className="flex-1 py-2 px-4 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-							>
-								Cancel
-							</button>
-							<button
-								onClick={handleBooking}
-								disabled={!selectedTimeslot || isLoading}
-								className="flex-1 py-2 px-4 border border-transparent rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-							>
-								{isLoading ? "Processing..." : "Confirm Booking"}
-							</button>
-						</div>
+								<div className="flex justify-end">
+									<button
+										onClick={() => {
+											setShowModal(false);
+											setSelectedResource(null);
+										}}
+										disabled={isLoading}
+										className="py-2 px-6 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+									>
+										Close
+									</button>
+								</div>
+							</>
+						) : (
+							<>
+								{/* Booking Details View */}
+								<h2 className="text-2xl font-bold text-gray-900 mb-4">Confirm Your Booking</h2>
+
+								{/* Hold Timer */}
+								{holdExpiresAt && timeRemaining !== "Expired" && (
+									<div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+										<div className="flex items-center justify-between">
+											<div className="flex items-center gap-2">
+												<span className="text-yellow-800 font-medium">⏱️ Timeslot held for:</span>
+												<span className="text-yellow-900 font-bold text-lg">{timeRemaining}</span>
+											</div>
+											<span className="text-xs text-yellow-700">Complete booking before time expires</span>
+										</div>
+									</div>
+								)}
+
+								{error && (
+									<div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
+										<p className="text-red-800">{error}</p>
+									</div>
+								)}
+
+								{/* Booking Details Summary */}
+								<div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+									<h3 className="text-lg font-semibold text-gray-900 mb-3">Booking Details</h3>
+									<div className="space-y-2 text-sm">
+										<div className="flex justify-between">
+											<span className="text-gray-600">Resource:</span>
+											<span className="font-medium text-gray-900">{selectedResource.name}</span>
+										</div>
+										<div className="flex justify-between">
+											<span className="text-gray-600">Date:</span>
+											<span className="font-medium text-gray-900">{selectedDate}</span>
+										</div>
+										<div className="flex justify-between">
+											<span className="text-gray-600">Time:</span>
+											<span className="font-medium text-gray-900">
+												{selectedTimeslot.start_time} - {selectedTimeslot.end_time}
+											</span>
+										</div>
+									</div>
+								</div>
+
+								{/* Name Input */}
+								<div className="mb-6">
+									<label htmlFor="booking-name" className="block text-sm font-medium text-gray-700 mb-2">
+										Your Name *
+									</label>
+									<input
+										id="booking-name"
+										type="text"
+										value={bookingName}
+										onChange={(e) => setBookingName(e.target.value)}
+										placeholder="Enter your name"
+										className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+										required
+									/>
+								</div>
+
+								{/* Recurring Booking Option */}
+								<div className="mb-6 p-4 border border-gray-300 rounded-md">
+									<label className="flex items-center gap-2 mb-4 cursor-pointer">
+										<input
+											type="checkbox"
+											checked={isRecurring}
+											onChange={(e) => setIsRecurring(e.target.checked)}
+											className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+										/>
+										<span className="text-sm font-medium text-gray-900">Make this a recurring booking</span>
+									</label>
+
+									{isRecurring && (
+										<div className="pl-6 space-y-4">
+											<div>
+												<label className="block text-sm font-medium text-gray-700 mb-2">Recurring Pattern</label>
+												<div className="space-y-2">
+													<label className="flex items-center gap-2 cursor-pointer">
+														<input
+															type="radio"
+															name="recurring-pattern"
+															value="DAILY"
+															checked={recurringPattern === "DAILY"}
+															onChange={(e) => setRecurringPattern(e.target.value as "DAILY" | "WEEKLY")}
+															className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+														/>
+														<span className="text-sm text-gray-700">
+															Daily (every weekday)
+														</span>
+													</label>
+													<label className="flex items-center gap-2 cursor-pointer">
+														<input
+															type="radio"
+															name="recurring-pattern"
+															value="WEEKLY"
+															checked={recurringPattern === "WEEKLY"}
+															onChange={(e) => setRecurringPattern(e.target.value as "DAILY" | "WEEKLY")}
+															className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+														/>
+														<span className="text-sm text-gray-700">
+															Weekly (same day each week - {parseDateYmd(selectedDate).toLocaleDateString("en-US", { weekday: "long" })})
+														</span>
+													</label>
+												</div>
+											</div>
+
+											<div>
+												<label htmlFor="recurring-end-date" className="block text-sm font-medium text-gray-700 mb-2">
+													Recurring Until
+												</label>
+												<DatePicker
+													id="recurring-end-date"
+													selected={recurringEndDate ? parseDateYmd(recurringEndDate) : null}
+													onChange={(date: Date | null) => {
+														if (date) {
+															setRecurringEndDate(formatDateYmd(date));
+														}
+													}}
+													filterDate={isWeekday}
+													minDate={parseDateYmd(selectedDate)}
+													dateFormat="yyyy-MM-dd"
+													className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+												/>
+											</div>
+
+											<div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+												<p className="text-xs text-blue-800">
+													<strong>Note:</strong> The system will attempt to create recurring bookings based on your pattern.
+													Some bookings may fail if the timeslot is already taken on specific dates.
+												</p>
+											</div>
+										</div>
+									)}
+								</div>
+
+								{/* Action Buttons */}
+								<div className="flex gap-4">
+									<button
+										onClick={handleCancelBooking}
+										disabled={isLoading}
+										className="flex-1 py-2 px-4 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+									>
+										Back
+									</button>
+									<button
+										onClick={handleConfirmBooking}
+										disabled={isLoading || !bookingName.trim() || timeRemaining === "Expired"}
+										className="flex-1 py-2 px-4 border border-transparent rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+									>
+										{isLoading ? "Processing..." : "Confirm Booking"}
+									</button>
+								</div>
+							</>
+						)}
 					</div>
 				</div>
 			)}

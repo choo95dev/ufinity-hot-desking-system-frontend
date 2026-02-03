@@ -130,6 +130,33 @@ export class BookingsService {
         });
     }
     /**
+     * Cancel booking
+     * Cancel a booking (soft delete)
+     * @param id Booking ID
+     * @returns any Booking cancelled successfully
+     * @throws ApiError
+     */
+    public static deleteApiBookings(
+        id: number,
+    ): CancelablePromise<{
+        statusCode?: number;
+        data?: {
+            message?: string;
+        };
+    }> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/bookings/{id}',
+            path: {
+                'id': id,
+            },
+            errors: {
+                404: `Booking not found`,
+                401: `Unauthorized to cancel this booking`,
+            },
+        });
+    }
+    /**
      * Confirm ONHOLD booking
      * Confirm a booking within 10 minutes (Step 2 of two-step booking)
      * @param id Booking ID
