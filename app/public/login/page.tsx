@@ -59,10 +59,8 @@ export default function LoginPage() {
 
 				console.log("User login successful:", response.data.user);
 				
-				// Navigate to dashboard or redirect URL
-				const urlParams = new URLSearchParams(window.location.search);
-				const redirect = urlParams.get('redirect') || '/public/dashboard';
-				router.push(redirect);
+				// Navigate to view-booking
+				router.push('/public/view-booking');
 			} else {
 				setErrors({ general: "Invalid response from server" });
 			}
