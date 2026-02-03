@@ -5,8 +5,12 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { ResourcesService } from "@/src/api/services/ResourcesService";
 import { BookingsService } from "@/src/api/services/BookingsService";
+import { FloorPlansService } from "@/src/api/services/FloorPlansService";
+import { OpenAPI } from "@/src/api/core/OpenAPI";
+import { getAuthToken } from "@/utils/auth";
 import type { Resource } from "@/src/api/models/Resource";
 import type { Booking } from "@/src/api/models/Booking";
+import type { FloorPlan } from "@/src/api/models/FloorPlan";
 
 type DeskStatus = "available" | "booked" | "unavailable" | "partially-booked";
 
@@ -24,6 +28,8 @@ interface Desk {
 	status: DeskStatus;
 	availableHours?: string;
 	timeSlots?: TimeSlot[];
+	position_x?: number | null;
+	position_y?: number | null;
 }
 
 interface BookingModalData {
@@ -82,9 +88,11 @@ export default function BookingPage() {
 	const [startTime, setStartTime] = useState(DEFAULT_START_TIME);
 	const [endTime, setEndTime] = useState(DEFAULT_END_TIME);
 	const [isLoading, setIsLoading] = useState(false);
+	const [selectedFloorPlan, setSelectedFloorPlan] = useState<number | null>(null);
+	const [floorPlanData, setFloorPlanData] = useState<FloorPlan | null>(null);
 	const [resources, setResources] = useState<Resource[]>([]);
 	const [bookings, setBookings] = useState<Booking[]>([]);
-	const [isLoadingData, setIsLoadingData] = useState(true);
+	const [isLoadingData, setIsLoadingData] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [selectedDate, setSelectedDate] = useState(() => {
 		const today = new Date();
@@ -117,6 +125,14 @@ export default function BookingPage() {
 		return formatDateYmd(today);
 	});
 
+	// Set authentication token on component mount
+	useEffect(() => {
+		const token = getAuthToken();
+		if (token) {
+			OpenAPI.TOKEN = token;
+		}
+	}, []);
+
 	// Convert resources and bookings to desk data
 	const desks: Desk[] = resources.map((resource) => {
 		// Check if resource has operating hours for the selected date
@@ -138,7 +154,22 @@ export default function BookingPage() {
 		const opStartTime = operatingHours?.start_time?.split(":").map(Number)[0] ?? BOOKING_START_HOUR;
 		const opEndTime = operatingHours?.end_time?.split(":").map(Number)[0] ?? BOOKING_END_HOUR;
 
-		const resourceBookings = bookings.filter((b) => b.resource_id === resource.id && b.status === "CONFIRMED");
+		// Filter bookings - include CONFIRMED, COMPLETED, and ONHOLD (within 10 min window)
+		const resourceBookings = bookings.filter((b) => {
+			if (b.resource_id !== resource.id) return false;
+
+			// Include CONFIRMED and COMPLETED bookings
+			if (b.status === "CONFIRMED" || b.status === "COMPLETED") return true;
+
+			// Include ONHOLD bookings that are still within the 10-minute hold window
+			if (b.status === "ONHOLD" && b.created_at) {
+				const createdAt = new Date(b.created_at);
+				const expiresAt = new Date(createdAt.getTime() + 10 * 60 * 1000);
+				return new Date() < expiresAt;
+			}
+
+			return false;
+		});
 
 		// Build time slots for the resource
 		const timeSlots: TimeSlot[] = [];
@@ -205,6 +236,8 @@ export default function BookingPage() {
 			status,
 			availableHours: `${availableHours} hours`,
 			timeSlots,
+			position_x: resource.position_x ?? null,
+			position_y: resource.position_y ?? null,
 		};
 	});
 
@@ -242,15 +275,37 @@ export default function BookingPage() {
 		return slot ? hour > selectedStart && hour <= slot.end : false;
 	};
 
-	// Fetch resources for floor plan ID 1
+	// Fetch floor plan data when selected
+	useEffect(() => {
+		const fetchFloorPlan = async () => {
+			if (!selectedFloorPlan) {
+				setFloorPlanData(null);
+				return;
+			}
+			try {
+				const floorPlanResponse = await FloorPlansService.getApiFloorPlans1(selectedFloorPlan);
+				setFloorPlanData(floorPlanResponse.data || null);
+			} catch (err) {
+				console.error("Error fetching floor plan:", err);
+			}
+		};
+
+		fetchFloorPlan();
+	}, [selectedFloorPlan]);
+
+	// Fetch resources for selected floor plan
 	useEffect(() => {
 		const fetchResources = async () => {
+			if (!selectedFloorPlan) {
+				setResources([]);
+				return;
+			}
+
 			try {
 				setIsLoadingData(true);
 				setError(null);
 
-				// Fetch resources for floor plan ID 1
-				const resourcesResponse = await ResourcesService.getApiResourcesByFloorPlan(1);
+				const resourcesResponse = await ResourcesService.getApiResourcesByFloorPlan(selectedFloorPlan);
 				setResources(resourcesResponse.data || []);
 			} catch (err) {
 				console.error("Error fetching resources:", err);
@@ -261,7 +316,7 @@ export default function BookingPage() {
 		};
 
 		fetchResources();
-	}, []);
+	}, [selectedFloorPlan]);
 
 	// Fetch bookings when date or resources change
 	useEffect(() => {
@@ -585,122 +640,230 @@ export default function BookingPage() {
 						/>
 						<p className="text-xs text-gray-600 mt-1">Weekends are not available for booking</p>
 					</div>
-					<div className="mb-8">
-						<h2 className="text-xl font-semibold text-gray-800 mb-4">Seat Availability</h2>
-						<div className="overflow-x-auto" data-testid="seat-availability">
-							<table className="min-w-full border border-gray-200 text-sm text-black">
-								<thead className="bg-gray-50">
-									<tr>
-										<th className="px-4 py-2 text-left font-semibold">Seat</th>
-										<th className="px-4 py-2 text-left font-semibold">AM</th>
-										<th className="px-4 py-2 text-left font-semibold">PM</th>
-										<th className="px-4 py-2 text-left font-semibold">Booked By (AM)</th>
-										<th className="px-4 py-2 text-left font-semibold">Booked By (PM)</th>
-										<th className="px-4 py-2 text-left font-semibold">Action</th>
-									</tr>
-								</thead>
-								<tbody>
-									{desks.map((desk) => {
-										const amStatus = getPeriodAvailability(desk, BOOKING_START_HOUR, AM_END_HOUR);
-										const pmStatus = getPeriodAvailability(desk, PM_START_HOUR, BOOKING_END_HOUR);
-										const amBookedBy = getBookedByInfo(desk, BOOKING_START_HOUR, AM_END_HOUR);
-										const pmBookedBy = getBookedByInfo(desk, PM_START_HOUR, BOOKING_END_HOUR);
-										return (
-											<tr key={`availability-${desk.id}`} className="border-t border-gray-200">
-												<td className="px-4 py-2 font-medium">{desk.name}</td>
-												<td className="px-4 py-2">
-													<span
-														data-testid={`availability-${desk.id}-am`}
-														className={`inline-flex items-center px-2 py-1 rounded border text-xs font-semibold ${getAvailabilityClassName(amStatus)}`}
-													>
-														{getAvailabilityLabel(amStatus)}
-													</span>
-												</td>
-												<td className="px-4 py-2">
-													<span
-														data-testid={`availability-${desk.id}-pm`}
-														className={`inline-flex items-center px-2 py-1 rounded border text-xs font-semibold ${getAvailabilityClassName(pmStatus)}`}
-													>
-														{getAvailabilityLabel(pmStatus)}
-													</span>
-												</td>
-												<td className="px-4 py-2 text-xs text-gray-600">{amBookedBy.length > 0 ? amBookedBy.join(", ") : "-"}</td>
-												<td className="px-4 py-2 text-xs text-gray-600">{pmBookedBy.length > 0 ? pmBookedBy.join(", ") : "-"}</td>
-												<td className="px-4 py-2">
-													<button
-														onClick={() => handleDeskClick(desk)}
-														disabled={desk.status === "booked" || desk.status === "unavailable"}
-														data-testid={`book-${desk.id}`}
-														className={`px-3 py-1 rounded text-xs font-medium ${
-															desk.status === "booked" || desk.status === "unavailable"
-																? "bg-gray-300 text-gray-500 cursor-not-allowed"
-																: "bg-blue-600 text-white hover:bg-blue-700"
-														}`}
-													>
-														Book
-													</button>
-												</td>
-											</tr>
-										);
-									})}
-								</tbody>
-							</table>
-						</div>
-					</div>
-					<div className="mb-8">
-						<h2 className="text-xl font-semibold text-gray-800 mb-4">Floor Plan</h2>
-						<div className="mb-6 flex flex-wrap gap-4 text-sm text-black">
-							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-green-100 border border-green-200 rounded"></div>
-								<span className="text-black">Available</span>
-							</div>
-							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-red-100 border border-red-200 rounded"></div>
-								<span className="text-black">Booked</span>
-							</div>
-							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded"></div>
-								<span className="text-black">Unavailable</span>
-							</div>
-							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded"></div>
-								<span className="text-black">Selected</span>
-							</div>
-							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-yellow-100 border border-yellow-200 rounded"></div>
-								<span className="text-black">Hover</span>
-							</div>
-							<div className="flex items-center gap-2">
-								<div className="w-4 h-4 bg-gradient-to-r from-red-100 to-green-100 border border-yellow-200 rounded"></div>
-								<span className="text-black">Partially Booked</span>
-							</div>
-						</div>
-
-						<div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4" data-testid="desk-grid">
-							{desks.map((desk) => (
-								<div key={desk.id} className="relative group">
-									<button
-										onClick={() => handleDeskClick(desk)}
-										onMouseEnter={() => setHoveredDesk(desk.id)}
-										onMouseLeave={() => setHoveredDesk(null)}
-										data-testid={`desk-${desk.id}`}
-										data-status={desk.status}
-										className={`w-full h-24 rounded-lg font-semibold transition-colors duration-200 ${getDeskColor(desk)}`}
-										disabled={desk.status === "booked" || desk.status === "unavailable"}
-									>
-										{desk.name}
-									</button>
-
-									{hoveredDesk === desk.id && desk.status !== "booked" && desk.status !== "unavailable" && (
-										<div className="absolute z-10 bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded py-3 px-4 min-w-[200px]">
-											{renderTimelineTooltip(desk)}
-											<div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
-										</div>
-									)}
-								</div>
+					<div className="mb-6">
+						<label className="block text-sm font-medium text-black mb-2">Select Floor Plan</label>
+						<div className="flex gap-3">
+							{[1, 2, 3].map((floorId) => (
+								<button
+									key={floorId}
+									onClick={() => setSelectedFloorPlan(floorId)}
+									data-testid={`floor-plan-${floorId}`}
+									className={`px-6 py-2 rounded-md font-medium transition-colors ${
+										selectedFloorPlan === floorId ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-800 hover:bg-gray-300"
+									}`}
+								>
+									Floor {floorId}
+								</button>
 							))}
 						</div>
 					</div>
+					{selectedFloorPlan && (
+						<>
+							<div className="mb-8">
+								<h2 className="text-xl font-semibold text-gray-800 mb-4">Seat Availability</h2>
+								<div className="overflow-x-auto" data-testid="seat-availability">
+									<table className="min-w-full border border-gray-200 text-sm text-black">
+										<thead className="bg-gray-50">
+											<tr>
+												<th className="px-4 py-2 text-left font-semibold">Seat</th>
+												<th className="px-4 py-2 text-left font-semibold">AM</th>
+												<th className="px-4 py-2 text-left font-semibold">PM</th>
+												<th className="px-4 py-2 text-left font-semibold">Booked By (AM)</th>
+												<th className="px-4 py-2 text-left font-semibold">Booked By (PM)</th>
+												<th className="px-4 py-2 text-left font-semibold">Action</th>
+											</tr>
+										</thead>
+										<tbody>
+											{desks.map((desk) => {
+												const amStatus = getPeriodAvailability(desk, BOOKING_START_HOUR, AM_END_HOUR);
+												const pmStatus = getPeriodAvailability(desk, PM_START_HOUR, BOOKING_END_HOUR);
+												const amBookedBy = getBookedByInfo(desk, BOOKING_START_HOUR, AM_END_HOUR);
+												const pmBookedBy = getBookedByInfo(desk, PM_START_HOUR, BOOKING_END_HOUR);
+												return (
+													<tr key={`availability-${desk.id}`} className="border-t border-gray-200">
+														<td className="px-4 py-2 font-medium">{desk.name}</td>
+														<td className="px-4 py-2">
+															<span
+																data-testid={`availability-${desk.id}-am`}
+																className={`inline-flex items-center px-2 py-1 rounded border text-xs font-semibold ${getAvailabilityClassName(amStatus)}`}
+															>
+																{getAvailabilityLabel(amStatus)}
+															</span>
+														</td>
+														<td className="px-4 py-2">
+															<span
+																data-testid={`availability-${desk.id}-pm`}
+																className={`inline-flex items-center px-2 py-1 rounded border text-xs font-semibold ${getAvailabilityClassName(pmStatus)}`}
+															>
+																{getAvailabilityLabel(pmStatus)}
+															</span>
+														</td>
+														<td className="px-4 py-2 text-xs text-gray-600">{amBookedBy.length > 0 ? amBookedBy.join(", ") : "-"}</td>
+														<td className="px-4 py-2 text-xs text-gray-600">{pmBookedBy.length > 0 ? pmBookedBy.join(", ") : "-"}</td>
+														<td className="px-4 py-2">
+															<button
+																onClick={() => handleDeskClick(desk)}
+																disabled={desk.status === "booked" || desk.status === "unavailable"}
+																data-testid={`book-${desk.id}`}
+																className={`px-3 py-1 rounded text-xs font-medium ${
+																	desk.status === "booked" || desk.status === "unavailable"
+																		? "bg-gray-300 text-gray-500 cursor-not-allowed"
+																		: "bg-blue-600 text-white hover:bg-blue-700"
+																}`}
+															>
+																Book
+															</button>
+														</td>
+													</tr>
+												);
+											})}
+										</tbody>
+									</table>
+								</div>
+							</div>
+							<div className="mb-8">
+								<h2 className="text-xl font-semibold text-gray-800 mb-4">Floor Plan</h2>
+								{floorPlanData?.name && (
+									<div className="mb-4">
+										<p className="text-sm text-gray-600">{floorPlanData.name}</p>
+										{floorPlanData.building && floorPlanData.floor && (
+											<p className="text-xs text-gray-500">
+												{floorPlanData.building} - {floorPlanData.floor}
+											</p>
+										)}
+									</div>
+								)}
+
+								<div className="mb-6 flex flex-wrap gap-4 text-sm text-black">
+									<div className="flex items-center gap-2">
+										<div className="w-4 h-4 bg-green-100 border border-green-200 rounded"></div>
+										<span className="text-black">Available</span>
+									</div>
+									<div className="flex items-center gap-2">
+										<div className="w-4 h-4 bg-red-100 border border-red-200 rounded"></div>
+										<span className="text-black">Booked</span>
+									</div>
+									<div className="flex items-center gap-2">
+										<div className="w-4 h-4 bg-gray-100 border border-gray-200 rounded"></div>
+										<span className="text-black">Unavailable</span>
+									</div>
+									<div className="flex items-center gap-2">
+										<div className="w-4 h-4 bg-blue-100 border border-blue-200 rounded"></div>
+										<span className="text-black">Selected</span>
+									</div>
+									<div className="flex items-center gap-2">
+										<div className="w-4 h-4 bg-yellow-100 border border-yellow-200 rounded"></div>
+										<span className="text-black">Hover</span>
+									</div>
+									<div className="flex items-center gap-2">
+										<div className="w-4 h-4 bg-gradient-to-r from-red-100 to-green-100 border border-yellow-200 rounded"></div>
+										<span className="text-black">Partially Booked</span>
+									</div>
+								</div>
+
+								{floorPlanData?.image_url ? (
+									<div className="mb-8">
+										<div className="bg-slate-100 rounded-lg p-6 border-2 border-slate-300 shadow-lg relative overflow-auto" style={{ maxHeight: "800px" }}>
+											<div className="relative inline-block">
+												<img
+													src={floorPlanData.image_url}
+													alt={floorPlanData.name || `Floor ${selectedFloorPlan} Plan`}
+													className="rounded-lg shadow-md"
+													style={{
+														width: floorPlanData.image_width ? `${floorPlanData.image_width}px` : "auto",
+														height: floorPlanData.image_height ? `${floorPlanData.image_height}px` : "auto",
+													}}
+													data-testid="floor-plan-image"
+													onLoad={() => console.log("Floor plan image loaded successfully:", floorPlanData.image_url)}
+													onError={(e) => {
+														console.error("Failed to load floor plan image:", floorPlanData.image_url);
+														console.error("Image element:", e.target);
+													}}
+												/>
+												{/* Overlay desks on floor plan */}
+												{desks.map((desk) => {
+													if (desk.position_x === null || desk.position_x === undefined || desk.position_y === null || desk.position_y === undefined) {
+														return null;
+													}
+													return (
+														<div
+															key={desk.id}
+															className="absolute"
+															style={{
+																left: `${desk.position_x}px`,
+																top: `${desk.position_y}px`,
+																transform: "translate(-50%, -50%)",
+															}}
+														>
+															<button
+																onClick={() => handleDeskClick(desk)}
+																onMouseEnter={() => setHoveredDesk(desk.id)}
+																onMouseLeave={() => setHoveredDesk(null)}
+																data-testid={`desk-${desk.id}`}
+																data-status={desk.status}
+																className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 shadow-lg hover:shadow-xl ${getDeskColor(desk)}`}
+																disabled={desk.status === "booked" || desk.status === "unavailable"}
+																style={{ minWidth: "60px" }}
+															>
+																{desk.name}
+															</button>
+
+															{hoveredDesk === desk.id && desk.status !== "booked" && desk.status !== "unavailable" && (
+																<div className="absolute z-50 bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded py-3 px-4 min-w-[200px] pointer-events-none">
+																	{renderTimelineTooltip(desk)}
+																	<div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+																</div>
+															)}
+														</div>
+													);
+												})}
+											</div>
+										</div>
+										<p className="text-xs text-center text-gray-500 mt-2">Click on a desk on the floor plan to make a booking</p>
+									</div>
+								) : (
+									<div className="mb-8 bg-slate-50 rounded-lg p-12 border-2 border-dashed border-slate-300 text-center">
+										<div className="text-6xl mb-4">🖼️</div>
+										<p className="text-slate-600 font-medium mb-2">No floor plan image available</p>
+										<p className="text-sm text-slate-500">Viewing desk list below</p>
+									</div>
+								)}
+
+								{/* Show desks without positions in a grid below */}
+								{desks.some((desk) => desk.position_x === null || desk.position_x === undefined) && (
+									<>
+										<h3 className="text-lg font-semibold text-gray-800 mb-4">Desks Without Position</h3>
+										<div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8" data-testid="desk-grid">
+											{desks
+												.filter((desk) => desk.position_x === null || desk.position_x === undefined)
+												.map((desk) => (
+													<div key={desk.id} className="relative group">
+														<button
+															onClick={() => handleDeskClick(desk)}
+															onMouseEnter={() => setHoveredDesk(desk.id)}
+															onMouseLeave={() => setHoveredDesk(null)}
+															data-testid={`desk-${desk.id}`}
+															data-status={desk.status}
+															className={`w-full h-24 rounded-lg font-semibold transition-colors duration-200 ${getDeskColor(desk)}`}
+															disabled={desk.status === "booked" || desk.status === "unavailable"}
+														>
+															{desk.name}
+														</button>
+
+														{hoveredDesk === desk.id && desk.status !== "booked" && desk.status !== "unavailable" && (
+															<div className="absolute z-10 bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs rounded py-3 px-4 min-w-[200px]">
+																{renderTimelineTooltip(desk)}
+																<div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+															</div>
+														)}
+													</div>
+												))}
+										</div>
+									</>
+								)}
+							</div>
+						</>
+					)}
 				</div>
 			</div>
 
@@ -708,10 +871,17 @@ export default function BookingPage() {
 				<div className="fixed inset-0 flex items-center justify-center z-50" data-testid="booking-modal">
 					<div className="bg-white rounded-lg p-8 max-w-md w-full mx-4 shadow-2xl border border-black">
 						<h2 className="text-2xl font-bold text-black mb-4">Confirm Booking</h2>
-						<p className="text-black mb-2">
-							<strong>Desk:</strong> {modalData.deskName}
-						</p>
-						{modalData.deskDescription && <p className="text-gray-600 text-sm mb-4">{modalData.deskDescription}</p>}
+						<div className="mb-4 pb-4 border-b border-gray-200">
+							<p className="text-black mb-2">
+								<strong>Desk:</strong> {modalData.deskName}
+							</p>
+							{modalData.deskDescription && (
+								<div className="mt-2 p-3 bg-gray-50 rounded-md border border-gray-200">
+									<p className="text-xs font-semibold text-gray-700 mb-1">Description:</p>
+									<p className="text-sm text-gray-800">{modalData.deskDescription}</p>
+								</div>
+							)}
+						</div>
 						<div className="mb-6 pb-6 border-b border-gray-200">
 							<label className="block text-sm font-medium text-black mb-3">Booking Type</label>
 							<div className="flex flex-col gap-3 mb-4">

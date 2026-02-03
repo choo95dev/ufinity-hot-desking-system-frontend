@@ -17,6 +17,9 @@ export type Resource = {
 	time_slot_granularity?: number;
 	max_booking_duration?: number | null;
 	is_active?: boolean;
+	floor_plan_id?: number | null;
+	position_x?: number | null;
+	position_y?: number | null;
 	created_at?: string;
 	updated_at?: string;
 	operating_hours?: Array<ResourceOperatingHours>;
