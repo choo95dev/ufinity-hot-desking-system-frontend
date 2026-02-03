@@ -13,6 +13,8 @@ interface Booking {
 	userName: string;
 	bookedSeat: string;
 	bookingTime: string;
+	startTime: Date;
+	endTime: Date;
 	bookedAt: string;
 	createdAt: string;
 }
@@ -36,11 +38,13 @@ const fetchBookings = async (): Promise<Booking[]> => {
 		return bookingItems.map((item: any) => ({
 			id: item.id,
 			userId: item.user_id || '',
-			userName: item.user_name || '',
-			bookedSeat: item.booked_seat || '',
+			userName: item.user?.name || item.user_name || '',
+			bookedSeat: item.resource?.name || item.booked_seat || '',
 			bookingTime: item.booking_time || '',
-			bookedAt: item.booked_at || '',
-			createdAt: item.created_at || '',
+			startTime: new Date(item.start_time),
+			endTime: new Date(item.end_time),
+			bookedAt: new Date(item.start_time).toLocaleString() || item.booked_at || '',
+			createdAt: new Date(item.created_at).toLocaleString() || item.created_at || '',
 		}));
 	} catch (err) {
 		console.error('Failed to fetch bookings:', err);
@@ -236,14 +240,18 @@ export default function ViewBookingPage() {
 							<tbody className="divide-y divide-gray-200 bg-white">
 								{filteredBookings.length > 0 ? (
 									filteredBookings.map((booking) => (
-										<tr key={booking.userId}>
+										<tr key={booking.id}>
 											<td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">{booking.userId}</td>
 											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{booking.userName}</td>
 											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
 												<span className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">{booking.bookedSeat}</span>
 											</td>
-											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{booking.bookedAt}</td>
-											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{booking.createdAt}</td>
+											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+												{booking.startTime.toLocaleDateString('en-CA')} {booking.startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} - {booking.endTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+											</td>
+											<td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+												{new Date(booking.createdAt).toLocaleDateString('en-CA')} {new Date(booking.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })}
+											</td>
 										</tr>
 									))
 								) : (
