@@ -84,8 +84,10 @@ export default function PublicViewBookingPage() {
 			nextBookings = nextBookings.filter((booking) => {
 				const seatName = booking.resource?.name || "";
 				const userName = booking.user?.name || "";
-				const bookingDate = new Date(booking.start_time).toLocaleDateString();
-				const searchTarget = `${seatName} ${bookingDate} ${booking.start_time} ${booking.end_time} ${userName} ${booking.status}`.toLowerCase();
+				const bookingDate = formatDate(booking.start_time);
+				const startTimeFormatted = formatTime(booking.start_time);
+				const endTimeFormatted = formatTime(booking.end_time);
+				const searchTarget = `${seatName} ${userName} ${bookingDate} ${startTimeFormatted} ${endTimeFormatted}`.toLowerCase();
 				return searchTarget.includes(normalizedSearch);
 			});
 		}
