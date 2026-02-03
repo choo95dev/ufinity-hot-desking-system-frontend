@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import DatePickerInput from "../../components/DatePickerInput";
 import AdminSideNav from "@/components/AdminSideNav";
 import { extractDate, formatDateYmd } from "../../lib/utils/date";
+import { BookingsService, OpenAPI } from "@/src/api";
+import { getAuthToken } from "@/utils/auth";
 
 interface Booking {
+	id?: string;
 	userId: string;
 	userName: string;
 	bookedSeat: string;
@@ -14,52 +17,35 @@ interface Booking {
 	createdAt: string;
 }
 
-// Mock API function
+// Fetch bookings from API
 const fetchBookings = async (): Promise<Booking[]> => {
-	// TODO: Replace with actual API call
-	// Expected endpoint: GET /api/bookings
-	return [
-		{
-			userId: "U001",
-			userName: "John Doe",
-			bookedSeat: "A-01",
-			bookingTime: "09:00 AM - 05:00 PM",
-			bookedAt: "2026-01-28 08:30 AM",
-			createdAt: "2026-01-27 03:15 PM",
-		},
-		{
-			userId: "U002",
-			userName: "Jane Smith",
-			bookedSeat: "B-03",
-			bookingTime: "10:00 AM - 04:00 PM",
-			bookedAt: "2026-01-28 09:15 AM",
-			createdAt: "2026-01-27 04:22 PM",
-		},
-		{
-			userId: "U003",
-			userName: "Michael Johnson",
-			bookedSeat: "A-05",
-			bookingTime: "08:00 AM - 06:00 PM",
-			bookedAt: "2026-01-27 04:45 PM",
-			createdAt: "2026-01-26 02:10 PM",
-		},
-		{
-			userId: "U004",
-			userName: "Sarah Williams",
-			bookedSeat: "C-02",
-			bookingTime: "09:30 AM - 05:30 PM",
-			bookedAt: "2026-01-28 07:00 AM",
-			createdAt: "2026-01-27 05:45 PM",
-		},
-		{
-			userId: "U005",
-			userName: "Robert Brown",
-			bookedSeat: "B-01",
-			bookingTime: "08:30 AM - 04:30 PM",
-			bookedAt: "2026-01-27 03:20 PM",
-			createdAt: "2026-01-26 01:30 PM",
-		},
-	];
+	try {
+		// Configure API base URL
+		OpenAPI.BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+		
+		// Set token from auth utility
+		const token = getAuthToken();
+		if (token) {
+			OpenAPI.TOKEN = token;
+		}
+
+		const response = await BookingsService.getApiBookings();
+		const bookingItems = response.data?.items || [];
+		
+		// Transform API response to Booking interface
+		return bookingItems.map((item: any) => ({
+			id: item.id,
+			userId: item.user_id || '',
+			userName: item.user_name || '',
+			bookedSeat: item.booked_seat || '',
+			bookingTime: item.booking_time || '',
+			bookedAt: item.booked_at || '',
+			createdAt: item.created_at || '',
+		}));
+	} catch (err) {
+		console.error('Failed to fetch bookings:', err);
+		throw new Error('Failed to fetch bookings');
+	}
 };
 
 export default function ViewBookingPage() {
