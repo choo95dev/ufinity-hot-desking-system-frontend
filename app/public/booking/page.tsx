@@ -264,37 +264,50 @@ export default function BookingPage() {
 			setIsLoading(true);
 			setError(null);
 
-			// Confirm the hold booking
-			await BookingsService.patchApiBookingsConfirm(holdBookingId);
-
-			// If recurring booking is requested, create recurring pattern
-			if (isRecurring && selectedResource && selectedTimeslot) {
+			// If recurring booking is requested, create recurring pattern first
+			if (isRecurring && selectedResource && selectedTimeslot && recurringEndDate) {
 				try {
-					const requestBody = {
+					const requestBody: Record<string, unknown> = {
 						resource_id: selectedResource.id!,
 						recurrence_pattern: recurringPattern,
 						start_date: selectedDate,
 						end_date: recurringEndDate,
-						start_time: `${selectedTimeslot.start_time}:00`,
-						end_time: `${selectedTimeslot.end_time}:00`,
-						reason: `Recurring ${recurringPattern.toLowerCase()} booking for ${selectedResource.name}`,
-						...(recurringPattern === "WEEKLY" && {
-							days_of_week: [parseDateYmd(selectedDate).getDay()],
-						}),
+						start_time: selectedTimeslot.start_time,
+						end_time: selectedTimeslot.end_time,
+						reason: bookingName,
 					};
 
+					// Add days_of_week for WEEKLY pattern
+					if (recurringPattern === "WEEKLY") {
+						const dayOfWeek = parseDateYmd(selectedDate).getDay();
+						requestBody.days_of_week = [dayOfWeek];
+					}
+
 					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					await BookingsService.postApiBookingsRecurring(requestBody as any);
+					const recurringResponse = await BookingsService.postApiBookingsRecurring(requestBody as any);
+					
+					// Cancel the hold since recurring creates its own bookings
+					if (holdBookingId) {
+						await BookingsService.deleteApiBookings(holdBookingId);
+					}
+					
+					const createdCount = recurringResponse.data?.created_bookings?.length || 0;
+					alert(`Successfully created ${createdCount} recurring bookings for ${selectedResource?.name}!`);
 				} catch (recurringErr) {
 					console.error("Failed to create recurring bookings:", recurringErr);
-					// Don't fail the whole process if recurring booking fails
+					// eslint-disable-next-line @typescript-eslint/no-explicit-any
+					const errorMessage = (recurringErr as any)?.body?.message || "Failed to create recurring bookings";
+					setError(errorMessage);
+					setIsLoading(false);
+					return;
 				}
+			} else {
+				// Single booking - just confirm the hold
+				await BookingsService.patchApiBookingsConfirm(holdBookingId);
+				alert(`Booking confirmed for ${selectedResource?.name}!`);
 			}
 
-			// Success
-			alert(`Booking confirmed for ${selectedResource?.name}!${isRecurring ? " Recurring bookings have been created." : ""}`);
-			
-			// Reset modal state
+			// Success - Reset modal state
 			setShowModal(false);
 			setSelectedTimeslot(null);
 			setHoldBookingId(null);
@@ -802,7 +815,7 @@ export default function BookingPage() {
 									</button>
 									<button
 										onClick={handleConfirmBooking}
-										disabled={isLoading || !bookingName.trim() || timeRemaining === "Expired"}
+										disabled={isLoading || !bookingName.trim() || timeRemaining === "Expired" || (isRecurring && !recurringEndDate)}
 										className="flex-1 py-2 px-4 border border-transparent rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
 									>
 										{isLoading ? "Processing..." : "Confirm Booking"}
